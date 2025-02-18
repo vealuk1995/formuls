@@ -1,0 +1,39 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Formula PWA</title>
+    <link rel="stylesheet" href="styles.css">
+    <link rel="manifest" href="manifest.json">
+</head>
+<body>
+    <div class="container">
+        <h1>Formula</h1>
+        
+        <!-- Форма для добавления формулы -->
+        <div class="formula-form">
+            <input type="text" id="formulaName" placeholder="Formula Name">
+            <input type="text" id="formulaExpression" placeholder="Formula (e.g., a + b)">
+            <button id="addFormula">Add Formula</button>
+        </div>
+
+        <!-- Список формул -->
+        <div class="formula-list">
+            <h2>Your Formulas</h2>
+            <ul id="formulas"></ul>
+        </div>
+
+        <!-- Область для вычисления результата -->
+        <div class="calculate-form">
+            <h2>Calculate</h2>
+            <select id="formulaSelect"></select>
+            <div id="variablesInput"></div>
+            <button id="calculate">Calculate</button>
+            <p id="result"></p>
+        </div>
+    </div>
+
+    <script src="app.js"></script>
+</body>
+</html>
