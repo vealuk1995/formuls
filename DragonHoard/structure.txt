@@ -1,0 +1,16 @@
+DragonHoard/
+├── index.html          # Главный HTML-файл для запуска игры
+├── game.js             # Основной код игры (приведён выше)
+├── assets/             # Папка для ресурсов
+│   ├── sprites/        # Подпапка для спрайтов
+│   │   ├── dragon_cartoon.png         # Спрайт дракона (64x64 px)
+│   │   ├── treasure_cartoon.png       # Спрайт сокровищ (96x96 px)
+│   │   ├── knight_cartoon.png         # Спрайт рыцаря (48x48 px)
+│   │   ├── thief_cartoon.png          # Спрайт вора (48x48 px)
+│   │   ├── fireball_cartoon.png       # Спрайт огненного шара (24x24 px)
+│   │   ├── platform_cartoon.png       # Спрайт платформы (192x32 px)
+│   │   └── crystal_bonus_cartoon.png  # Спрайт бонуса (32x32 px)
+│   └── backgrounds/    # Подпапка для фонов
+│       └── cave_bg_cartoon.png        # Фон пещеры (800x600 px)
+└── lib/                # Папка для внешних библиотек (опционально)
+    └── phaser.min.js   # Phaser 3 библиотека (если не использовать CDN)
