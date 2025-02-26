@@ -1,0 +1,34 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, minimum-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Пингвин на льдинах</title>
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <div id="game-container">
+        <div id="background">
+            <img src="assets/sprites/cloud.png" class="cloud" style="top: 10vh; left: 20%;">
+            <img src="assets/sprites/cloud.png" class="cloud" style="top: 20vh; left: 60%;">
+        </div>
+        <div id="penguin"></div>
+        <div id="score">Очки: 0</div>
+        <div id="high-score">Лучший: 0</div>
+        <div id="game-over" class="hidden">
+            <h2>Игра окончена!</h2>
+            <p>Очки: <span id="final-score">0</span></p>
+            <div id="upgrades">
+                <button id="upgrade-jump">Улучшить прыжок (100 очков)</button>
+                <button id="upgrade-speed">Улучшить скорость (150 очков)</button>
+            </div>
+            <button id="restart">Играть снова</button>
+        </div>
+    </div>
+    <audio id="jump-sound" src="assets/sounds/jump.mp3"></audio>
+    <audio id="collect-sound" src="assets/sounds/collect.mp3"></audio>
+    <audio id="slip-sound" src="assets/sounds/slip.mp3"></audio>
+    <audio id="break-sound" src="assets/sounds/break.mp3"></audio>
+    <script src="script.js"></script>
+</body>
+</html>
