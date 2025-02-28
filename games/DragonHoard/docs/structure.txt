@@ -1,0 +1,21 @@
+Dragon's-Hoard/
+├── index.html         # Основной HTML-файл
+├── game.js            # Основной файл логики игры
+├── lib/
+│   └── phaser.min.js  # Библиотека Phaser (минимизированная версия)
+├── assets/
+│   ├── sprites/       # Папка для всех спрайтов
+│   │   ├── dragon_spritesheet.png
+│   │   ├── treasure_cartoon.png
+│   │   ├── knight_spritesheet.png
+│   │   ├── griffin_spritesheet.png
+│   │   ├── fireball_spritesheet.png
+│   │   ├── platform_cartoon.png
+│   │   ├── crystal_bonus_cartoon.png
+│   │   └── coin.png
+│   ├── backgrounds/   # Папка для фоновых изображений
+│   │   └── cave_bg_cartoon.png
+│   └── sounds/        # Папка для звуковых файлов
+│       ├── fireball.mp3
+│       ├── coin_steal.mp3
+│       └── bonus.mp3
