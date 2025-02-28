@@ -114,6 +114,7 @@ class Dragon {
 }
 
 function preload() {
+    console.log('Starting preload...');
     this.load.on('progress', (value) => {
         console.log(`Loading progress: ${Math.round(value * 100)}%`);
         if (progressBar) {
@@ -136,7 +137,7 @@ function preload() {
             progressBar = null;
         }
         if (startScreenText) startScreenText.setText("Dragon's Hoard\nPress ENTER or Tap to Start");
-        if (startButton) startButton.setVisible(true); // Показываем кнопку после загрузки
+        if (startButton) startButton.setVisible(true);
     });
 
     this.load.on('fileerror', (file) => {
@@ -158,6 +159,7 @@ function preload() {
 }
 
 function create() {
+    console.log('Starting create...');
     gameWidth = this.scale.width;
     gameHeight = this.scale.height;
 
@@ -169,16 +171,18 @@ function create() {
         { fontFamily: 'MedievalSharp', fontSize: '50px', color: '#ffd700', align: 'center' });
     progressScroll = this.add.rectangle(gameWidth / 2, gameHeight / 2 + 50, gameWidth * 0.5, 40, 0x8b4513).setOrigin(0.5);
     progressBar = this.add.rectangle(gameWidth / 2 - (gameWidth * 0.25), gameHeight / 2 + 50, 0, 30, 0xffff00).setOrigin(0, 0.5);
-    
-    // Добавляем кнопку "Start" (пока скрыта до завершения загрузки)
+
+    // Кнопка "Start"
     startButton = this.add.rectangle(gameWidth / 2, gameHeight / 2 + 150, 200, 80, 0x00ff00)
         .setInteractive()
         .setVisible(false);
     this.add.text(gameWidth / 2 - 40, gameHeight / 2 + 130, "Start", 
         { fontFamily: 'MedievalSharp', fontSize: '30px', color: '#000000' });
-    startButton.on('pointerdown', startGame, this);
+    startButton.on('pointerdown', () => {
+        console.log('Start button clicked!');
+        startGame.call(this);
+    });
 
-    // Инициализация игровых объектов
     platforms = createPlatforms(this, gameWidth, gameHeight);
     treasure = this.physics.add.staticSprite(gameWidth / 2, gameHeight * GAME_CONSTANTS.TREASURE_Y, 'treasure');
     treasure.setData('health', treasureHealth);
@@ -202,7 +206,10 @@ function create() {
     cursors = this.input.keyboard.createCursorKeys();
     this.input.keyboard.on('keydown-SPACE', () => dragon.shoot(), this);
     this.input.keyboard.on('keydown-R', restartGame, this);
-    this.input.keyboard.on('keydown-ENTER', startGame, this);
+    this.input.keyboard.on('keydown-ENTER', () => {
+        console.log('Enter key pressed!');
+        startGame.call(this);
+    });
 
     enemies = this.physics.add.group({ maxSize: GAME_CONSTANTS.MAX_ENEMIES });
     bonuses = this.physics.add.group({ maxSize: GAME_CONSTANTS.MAX_BONUSES });
@@ -214,8 +221,7 @@ function create() {
     this.physics.add.overlap(dragon.sprite, enemies, dragonDeath, null, this);
     this.physics.add.collider(bonuses, platforms);
 
-    // Мобильные кнопки управления
-    if (!this.sys.game.device.os.desktop || this.sys.game.device.os.touch) { // Расширяем для всех сенсорных устройств
+    if (!this.sys.game.device.os.desktop || this.sys.game.device.os.touch) {
         const buttonSize = gameWidth * GAME_CONSTANTS.BUTTON_SIZE_FACTOR;
         let leftButton = this.add.rectangle(gameWidth * 0.125, gameHeight * 0.83, buttonSize, buttonSize, 0x6666ff).setInteractive();
         let rightButton = this.add.rectangle(gameWidth * 0.25, gameHeight * 0.83, buttonSize, buttonSize, 0x6666ff).setInteractive();
@@ -237,6 +243,7 @@ function create() {
 
     hideGameElements.call(this);
     this.scale.on('resize', resize, this);
+    console.log('Create finished.');
 }
 
 function update() {
@@ -465,6 +472,7 @@ function resize(gameSize) {
 }
 
 function showStartScreen() {
+    console.log('Showing start screen...');
     this.physics.pause();
     this.add.image(gameWidth / 2, gameHeight / 2, 'cave_bg').setDisplaySize(gameWidth, gameHeight);
     startScreenRect = this.add.rectangle(gameWidth / 2, gameHeight / 2, gameWidth, gameHeight, 0x000000, 0.5);
@@ -491,6 +499,7 @@ function hideGameElements() {
 
 function startGame() {
     if (isGameStarted || !this.load.isReady()) return;
+    console.log('Starting game...');
     isGameStarted = true;
     
     if (startScreenText) {
