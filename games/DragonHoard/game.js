@@ -23,7 +23,7 @@ const GAME_CONSTANTS = {
     BONUS_HP_RESTORE: 10,
     BONUS_LIFE_RESTORE: 1,
     TREASURE_DAMAGE_RADIUS: 50,
-    TREASURE_HP_LOSS_RATE: 1000,
+    TREASURE_HP_LOSS_RATE: 300,
     ARCHER_ARROW_SPEED: 300,
     ARCHER_SHOOT_DELAY: 2000,
     WAVE_PREPARATION_TIME: 5000,
@@ -179,7 +179,7 @@ function create() {
     }
 
     startScreen = this.add.group();
-    startScreen.add(this.add.text(gameWidth / 2, gameHeight / 2 + 100, 'Tap to Start Fullscreen', { fontFamily: 'MedievalSharp', fontSize: '20px', color: '#fff' }).setOrigin(0.5));
+    startScreen.add(this.add.text(gameWidth / 2, gameHeight / 2 + 100, 'Tap to Start Fullscreen', { fontFamily: 'MedievalSharp', fontSize: '60px', color: '#fff' }).setOrigin(0.5));
     if (isMobileDevice()) {
         this.input.once('pointerdown', () => {
             console.log("Start game tap detected");

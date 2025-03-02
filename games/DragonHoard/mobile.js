@@ -39,11 +39,11 @@ window.initMobileControls = function(scene) {
     const buttonSize = gameWidth * GAME_CONSTANTS.BUTTON_SIZE_FACTOR;
     let leftButton, rightButton;
     if (!joystick) {
-        leftButton = scene.add.circle(gameWidth * 0.07, gameHeight * 0.9, buttonSize / 2, 0xBABABA)
+        leftButton = scene.add.circle(gameWidth * 0.125, gameHeight * 0.9, buttonSize / 1.7, 0xBABABA)
             .setInteractive()
             .setAlpha(0.7)
             .setDepth(1000);
-        rightButton = scene.add.circle(gameWidth * 0.20, gameHeight * 0.9, buttonSize / 2, 0xBABABA)
+        rightButton = scene.add.circle(gameWidth * 0.25, gameHeight * 0.9, buttonSize / 1.7, 0xBABABA)
             .setInteractive()
             .setAlpha(0.7)
             .setDepth(1000);
@@ -77,7 +77,7 @@ window.initMobileControls = function(scene) {
     }
 
     // Кнопка прыжка с удержанием
-    let jumpButton = scene.add.circle(gameWidth * 0.875, gameHeight * 0.9, buttonSize / 2, 0x66ff66)
+    let jumpButton = scene.add.circle(gameWidth * 0.875, gameHeight * 0.9, buttonSize / 1.7, 0x66ff66)
         .setInteractive()
         .setAlpha(0.7)
         .setDepth(1000);
@@ -96,7 +96,7 @@ window.initMobileControls = function(scene) {
     });
 
     // Кнопка выстрела с удержанием
-    let shootButton = scene.add.circle(gameWidth * 0.75, gameHeight * 0.9, buttonSize / 2, 0xff6666)
+    let shootButton = scene.add.circle(gameWidth * 0.75, gameHeight * 0.9, buttonSize / 1.7, 0xff6666)
         .setInteractive()
         .setAlpha(0.7)
         .setDepth(1000);
