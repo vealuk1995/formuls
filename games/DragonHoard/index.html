@@ -1,0 +1,62 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Dragon's Hoard</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            overflow: hidden;
+            background: #000;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            width: 100vw;
+        }
+        #game-container {
+            width: 100%;
+            height: 100%;
+            aspect-ratio: 16 / 9;
+            max-width: 100vw;
+            max-height: 100vh;
+            position: relative;
+        }
+        canvas {
+            display: block;
+            width: 100%;
+            height: 100%;
+        }
+        @font-face {
+            font-family: 'MedievalSharp';
+            src: url('assets/fonts/MedievalSharp-Regular.ttf') format('truetype');
+        }
+        @font-face {
+            font-family: 'GoodVibesPro';
+            src: url('assets/fonts/GoodVibesPro.ttf') format('truetype');
+        }
+        @font-face {
+            font-family: 'VinqueRg';
+            src: url('assets/fonts/VinqueRg.ttf') format('truetype');
+        }
+        body, #game-container {
+            font-family: 'MedievalSharp', 'Arial', sans-serif;
+        }
+    </style>
+    <link rel="preload" href="assets/fonts/MedievalSharp-Regular.ttf" as="font" type="font/ttf" crossorigin>
+    <link rel="preload" href="assets/fonts/GoodVibesPro.ttf" as="font" type="font/ttf" crossorigin>
+    <link rel="preload" href="assets/fonts/VinqueRg.ttf" as="font" type="font/ttf" crossorigin>
+
+</head>
+<body>
+    <div id="game-container">
+        <script src="lib/phaser.min.js" onerror="alert('Failed to load Phaser library')"></script>
+        <!-- Используем локальную копию плагина или CDN с запасным вариантом -->
+        <script src="lib/rexvirtualjoystickplugin.min.js" onerror="alert('Failed to load Joystick plugin from local source')"; document.write('<script src=\"https://raw.githubusercontent.com/rexrainbow/phaser3-rex-notes/master/dist/rexvirtualjoystickplugin.min.js\"></script>')"></script>
+        <script src="game.js" onerror="alert('Failed to load game script')"></script>
+        <script src="mobile.js" onerror="alert('Failed to load mobile controls script')"></script>
+    </div>
+</body>
+</html>
