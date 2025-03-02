@@ -13,7 +13,8 @@ window.initMobileControls = function(scene) {
     virtualCursors = virtualCursors || { 
         left: { isDown: false }, 
         right: { isDown: false }, 
-        up: { isDown: false }
+        up: { isDown: false },
+        shoot: { isDown: false }
     };
 
     // Инициализация виртуального джойстика
@@ -99,6 +100,19 @@ window.initMobileControls = function(scene) {
         .setInteractive()
         .setAlpha(0.7)
         .setDepth(1000);
+
+        shootButton.on('pointerdown', () => {
+            virtualCursors.shoot.isDown = true; // Устанавливаем состояние стрельбы
+            console.log("Shoot button pressed");
+        });
+        shootButton.on('pointerup', () => {
+            virtualCursors.shoot.isDown = false;
+            console.log("Shoot button released");
+        });
+        shootButton.on('pointerout', () => {
+            virtualCursors.shoot.isDown = false;
+            console.log("Shoot button pointer out");
+        });
 
     let shootInterval = null;
     shootButton.on('pointerdown', () => {

@@ -38,7 +38,11 @@ const config = {
     height: 720,
     scale: { mode: Phaser.Scale.FIT, autoCenter: Phaser.Scale.CENTER_BOTH },
     physics: { default: 'arcade', arcade: { gravity: { y: GAME_CONSTANTS.GRAVITY_Y }, debug: false } },
-    scene: { preload, create, update }
+    scene: { preload, create, update },
+    input: {
+        touch: true, // Включаем поддержку касаний
+        activePointers: 4 // Максимум 4 одновременных касания
+    }
 };
 
 const game = new Phaser.Game(config);
@@ -264,7 +268,8 @@ function startGame() {
     virtualCursors = { 
         left: { isDown: false }, 
         right: { isDown: false }, 
-        up: { isDown: false }
+        up: { isDown: false },
+        shoot: { isDown: false }
     };
 
     scene.physics.add.collider(enemies, platforms);
@@ -292,9 +297,15 @@ function update() {
 
     // Выбор управления в зависимости от устройства
     if (isMobileDevice() && virtualCursors) {
-        dragon.move(virtualCursors); // Мобильное управление
+        dragon.move(virtualCursors);
+        if (virtualCursors.shoot.isDown) { // Стрельба в update
+            dragon.shoot();
+        }
     } else {
-        dragon.move(cursors); // Десктопное управление
+        dragon.move(cursors);
+        if (cursors.space.isDown) { // Для десктопа
+            dragon.shoot();
+        }
     }
 
     enemies.getChildren().forEach(enemy => {
