@@ -102,18 +102,21 @@ window.initMobileControls = function(scene) {
         .setDepth(1000);
 
         shootButton.on('pointerdown', () => {
-            virtualCursors.shoot.isDown = true; // Устанавливаем состояние стрельбы
+            virtualCursors.shoot.isDown = true;
+            dragon.shoot(); // Начинаем стрельбу
             console.log("Shoot button pressed");
         });
         shootButton.on('pointerup', () => {
             virtualCursors.shoot.isDown = false;
+            dragon.stopShooting(); // Останавливаем стрельбу
             console.log("Shoot button released");
         });
         shootButton.on('pointerout', () => {
             virtualCursors.shoot.isDown = false;
+            dragon.stopShooting();
             console.log("Shoot button pointer out");
         });
-
+        
     let shootInterval = null;
     shootButton.on('pointerdown', () => {
         dragon.shoot();

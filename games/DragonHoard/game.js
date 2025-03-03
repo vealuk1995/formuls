@@ -28,7 +28,8 @@ const GAME_CONSTANTS = {
     ARCHER_SHOOT_DELAY: 2000,
     WAVE_PREPARATION_TIME: 5000,
     ENEMY_SPAWN_INTERVAL: 1000,
-    MIN_ENEMY_SPACING: 60
+    MIN_ENEMY_SPACING: 60,
+    MIN_DRAGON_ENEMY_DISTANCE: 200
 };
 
 const config = {
@@ -69,6 +70,43 @@ class Dragon {
             this.debugRect = scene.add.rectangle(x, y, 64, 64, 0x800080, 0.5).setDepth(1000);
             debugRects.push(this.debugRect);
         }
+        this.shootInterval = null; // Добавляем переменную для таймера
+    }
+    shoot() {
+        if (!this.fireballs || this.fireballs.countActive(true) >= GAME_CONSTANTS.MAX_FIREBALLS) return;
+
+        const fireSingleShot = () => {
+            let fireball = this.fireballs.get(this.sprite.x, this.sprite.y);
+            if (fireball) {
+                fireball.setActive(true).setVisible(true)
+                    .body.allowGravity = false;
+                fireball.body.setSize(36, 24);
+                fireball.setVelocityX(this.lastDirection * GAME_CONSTANTS.FIREBALL_SPEED)
+                    .setScale(this.lastDirection, 1)
+                    .anims.play('fireball_fly', true);
+                fireball.body.setOffset(this.lastDirection === -1 ? 36 : 0, 0);
+                // Удаляем коллизию с платформами (см. пункт 2 ниже)
+                if (this.scene.sound.get('fireball_sound')) this.scene.sound.get('fireball_sound').play();
+            }
+        };
+
+        // Если таймер уже существует, не создаем новый выстрел
+        if (!this.shootInterval) {
+            fireSingleShot(); // Первый выстрел сразу
+            this.shootInterval = this.scene.time.addEvent({
+                delay: 200, // Интервал между выстрелами (в миллисекундах)
+                callback: fireSingleShot,
+                callbackScope: this,
+                loop: true
+            });
+        }
+    }
+
+    stopShooting() {
+        if (this.shootInterval) {
+            this.shootInterval.remove();
+            this.shootInterval = null;
+        }
     }
 
     move(cursors) {
@@ -104,7 +142,6 @@ class Dragon {
                 .setScale(this.lastDirection, 1)
                 .anims.play('fireball_fly', true);
             fireball.body.setOffset(this.lastDirection === -1 ? 36 : 0, 0);
-            this.scene.physics.add.collider(fireball, platforms, () => fireball.destroy());
             if (this.scene.sound.get('fireball_sound')) this.scene.sound.get('fireball_sound').play();
         }
     }
@@ -347,6 +384,21 @@ function update() {
         dragon.move(virtualCursors);
         if (virtualCursors.shoot.isDown) {
             dragon.shoot();
+        } else {
+            dragon.stopShooting();
+        }
+    } else {
+        dragon.move(cursors);
+        if (cursors.space.isDown) {
+            dragon.shoot();
+        } else {
+            dragon.stopShooting();
+        }
+    }
+    if (isMobileDevice() && virtualCursors) {
+        dragon.move(virtualCursors);
+        if (virtualCursors.shoot.isDown) {
+            dragon.shoot();
         }
     } else {
         dragon.move(cursors);
@@ -431,7 +483,7 @@ function createPlatforms(scene, width, height) {
         }
     }
 
-    for (let x = 0; x < 7 * tileSize; x += tileSize) {
+    for (let x = 0; x < 9 * tileSize; x += tileSize) {
         let platform = platforms.create(width * 0.15 - 3.5 * tileSize + x + tileSize / 2, height * 0.75 - tileSize / 2, 'platform_tile')
             .setDisplaySize(tileSize, tileSize)
             .refreshBody();
@@ -452,7 +504,7 @@ function createPlatforms(scene, width, height) {
     }
 
     for (let x = 0; x < 5 * tileSize; x += tileSize) {
-        let platform = platforms.create(width * 0.1875 - 2.5 * tileSize + x + tileSize / 2, height * 0.5 - tileSize / 2, 'platform_tile')
+        let platform = platforms.create(width * 0.1875 - 2.5 * tileSize + x + tileSize / 2, height * 0.46 - tileSize / 2, 'platform_tile')
             .setDisplaySize(tileSize, tileSize)
             .refreshBody();
         if (scene.physics.config.debug) {
@@ -462,7 +514,7 @@ function createPlatforms(scene, width, height) {
     }
 
     for (let x = 0; x < 4 * tileSize; x += tileSize) {
-        let platform = platforms.create(width * 0.8125 - 2 * tileSize + x + tileSize / 2, height * 0.5 - tileSize / 2, 'platform_tile')
+        let platform = platforms.create(width * 0.8125 - 2 * tileSize + x + tileSize / 2, height * 0.45 - tileSize / 2, 'platform_tile')
             .setDisplaySize(tileSize, tileSize)
             .refreshBody();
         if (scene.physics.config.debug) {
@@ -472,7 +524,7 @@ function createPlatforms(scene, width, height) {
     }
 
     for (let x = 0; x < 6 * tileSize; x += tileSize) {
-        let platform = platforms.create(width * 0.5 - 3 * tileSize + x + tileSize / 2, height * 0.625 - tileSize / 2, 'platform_tile')
+        let platform = platforms.create(width * 0.5 - 3 * tileSize + x + tileSize / 2, height * 0.6 - tileSize / 2, 'platform_tile')
             .setDisplaySize(tileSize, tileSize)
             .refreshBody();
         if (scene.physics.config.debug) {
@@ -525,45 +577,71 @@ function spawnWave() {
         let type = Phaser.Math.RND.pick(['knight', 'griffin']);
         let y = Phaser.Math.RND.pick(platformHeights);
         let x, spawnSide, attempts = 0;
+
         do {
             x = Math.random() < 0.5 ? gameWidth * 0.0625 + Phaser.Math.Between(-50, 50) : gameWidth * 0.9375 + Phaser.Math.Between(-50, 50);
             spawnSide = x < gameWidth / 2 ? 'left' : 'right';
             attempts++;
-            if (attempts > 10) break;
-        } while (spawnPositions.some(pos => Phaser.Math.Distance.Between(x, y, pos.x, pos.y) < GAME_CONSTANTS.MIN_ENEMY_SPACING));
-        if (attempts <= 10) {
+            if (attempts > 20) break; // Увеличим количество попыток до 20
+            // Проверяем расстояние до дракона
+        } while (
+            spawnPositions.some(pos => Phaser.Math.Distance.Between(x, y, pos.x, pos.y) < GAME_CONSTANTS.MIN_ENEMY_SPACING) ||
+            Phaser.Math.Distance.Between(x, y, dragon.sprite.x, dragon.sprite.y) < GAME_CONSTANTS.MIN_DRAGON_ENEMY_DISTANCE
+        );
+
+        if (attempts <= 20) {
             spawnPositions.push({ x, y });
             enemiesToSpawn.push({ x, y, type, spawnSide, isArcher: false });
+        } else {
+            console.warn(`Could not find valid spawn position for enemy ${i + 1} in wave ${waveNumber}`);
         }
     }
 
+    // Спавн лучников (также с проверкой расстояния до дракона)
     if (waveNumber >= 3) {
         let archerX = gameWidth * 0.5;
-        if (!spawnPositions.some(pos => Phaser.Math.Distance.Between(archerX, gameHeight * 0.625 - 100, pos.x, pos.y) < GAME_CONSTANTS.MIN_ENEMY_SPACING)) {
+        if (
+            !spawnPositions.some(pos => Phaser.Math.Distance.Between(archerX, gameHeight * 0.625 - 100, pos.x, pos.y) < GAME_CONSTANTS.MIN_ENEMY_SPACING) &&
+            Phaser.Math.Distance.Between(archerX, gameHeight * 0.625 - 100, dragon.sprite.x, dragon.sprite.y) >= GAME_CONSTANTS.MIN_DRAGON_ENEMY_DISTANCE
+        ) {
             enemiesToSpawn.push({ x: archerX, y: gameHeight * 0.625 - 100, type: 'archer', spawnSide: 'center', isArcher: true });
             spawnPositions.push({ x: archerX, y: gameHeight * 0.625 - 100 });
         }
     }
+
     if (waveNumber >= 6) {
         let leftX = gameWidth * 0.1875;
         let rightX = gameWidth * 0.8125;
-        if (!spawnPositions.some(pos => Phaser.Math.Distance.Between(leftX, gameHeight * 0.5 - 100, pos.x, pos.y) < GAME_CONSTANTS.MIN_ENEMY_SPACING)) {
+        if (
+            !spawnPositions.some(pos => Phaser.Math.Distance.Between(leftX, gameHeight * 0.5 - 100, pos.x, pos.y) < GAME_CONSTANTS.MIN_ENEMY_SPACING) &&
+            Phaser.Math.Distance.Between(leftX, gameHeight * 0.5 - 100, dragon.sprite.x, dragon.sprite.y) >= GAME_CONSTANTS.MIN_DRAGON_ENEMY_DISTANCE
+        ) {
             enemiesToSpawn.push({ x: leftX, y: gameHeight * 0.5 - 100, type: 'archer', spawnSide: 'left', isArcher: true });
             spawnPositions.push({ x: leftX, y: gameHeight * 0.5 - 100 });
         }
-        if (!spawnPositions.some(pos => Phaser.Math.Distance.Between(rightX, gameHeight * 0.5 - 100, pos.x, pos.y) < GAME_CONSTANTS.MIN_ENEMY_SPACING)) {
+        if (
+            !spawnPositions.some(pos => Phaser.Math.Distance.Between(rightX, gameHeight * 0.5 - 100, pos.x, pos.y) < GAME_CONSTANTS.MIN_ENEMY_SPACING) &&
+            Phaser.Math.Distance.Between(rightX, gameHeight * 0.5 - 100, dragon.sprite.x, dragon.sprite.y) >= GAME_CONSTANTS.MIN_DRAGON_ENEMY_DISTANCE
+        ) {
             enemiesToSpawn.push({ x: rightX, y: gameHeight * 0.5 - 100, type: 'archer', spawnSide: 'right', isArcher: true });
             spawnPositions.push({ x: rightX, y: gameHeight * 0.5 - 100 });
         }
     }
+
     if (waveNumber >= 9) {
         let leftLowX = gameWidth * 0.15;
         let rightLowX = gameWidth * 0.85;
-        if (!spawnPositions.some(pos => Phaser.Math.Distance.Between(leftLowX, gameHeight * 0.75 - 100, pos.x, pos.y) < GAME_CONSTANTS.MIN_ENEMY_SPACING)) {
+        if (
+            !spawnPositions.some(pos => Phaser.Math.Distance.Between(leftLowX, gameHeight * 0.75 - 100, pos.x, pos.y) < GAME_CONSTANTS.MIN_ENEMY_SPACING) &&
+            Phaser.Math.Distance.Between(leftLowX, gameHeight * 0.75 - 100, dragon.sprite.x, dragon.sprite.y) >= GAME_CONSTANTS.MIN_DRAGON_ENEMY_DISTANCE
+        ) {
             enemiesToSpawn.push({ x: leftLowX, y: gameHeight * 0.75 - 100, type: 'archer', spawnSide: 'left', isArcher: true });
             spawnPositions.push({ x: leftLowX, y: gameHeight * 0.75 - 100 });
         }
-        if (!spawnPositions.some(pos => Phaser.Math.Distance.Between(rightLowX, gameHeight * 0.75 - 100, pos.x, pos.y) < GAME_CONSTANTS.MIN_ENEMY_SPACING)) {
+        if (
+            !spawnPositions.some(pos => Phaser.Math.Distance.Between(rightLowX, gameHeight * 0.75 - 100, pos.x, pos.y) < GAME_CONSTANTS.MIN_ENEMY_SPACING) &&
+            Phaser.Math.Distance.Between(rightLowX, gameHeight * 0.75 - 100, dragon.sprite.x, dragon.sprite.y) >= GAME_CONSTANTS.MIN_DRAGON_ENEMY_DISTANCE
+        ) {
             enemiesToSpawn.push({ x: rightLowX, y: gameHeight * 0.75 - 100, type: 'archer', spawnSide: 'right', isArcher: true });
             spawnPositions.push({ x: rightLowX, y: gameHeight * 0.75 - 100 });
         }
