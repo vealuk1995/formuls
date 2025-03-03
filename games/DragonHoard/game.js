@@ -225,7 +225,6 @@ function create() {
         shadow: { offsetX: 16, offsetY: 16, color: '#000', blur: 5, stroke: true, fill: true }
     }).setOrigin(0.5));
 
-    // Разделяем текст для ПК и мобильных устройств
     let orientationText;
     const checkOrientation = () => {
         if (window.innerHeight > window.innerWidth) {
@@ -236,7 +235,7 @@ function create() {
     };
 
     if (isMobileDevice()) {
-        startScreen.add(this.add.text(gameWidth / 2, gameHeight / 2 + 50, 'Tap to Start Fullscreen', {
+        startScreen.add(this.add.text(gameWidth / 2, gameHeight / 2 + 50, 'Tap to Start', {
             fontFamily: 'MedievalSharp',
             fontSize: '40px',
             color: '#ffffff',
@@ -257,26 +256,7 @@ function create() {
         window.addEventListener('resize', checkOrientation);
         checkOrientation();
 
-        this.input.once('pointerdown', () => {
-            console.log("Start game tap detected");
-            if (!document.fullscreenElement) {
-                document.documentElement.requestFullscreen()
-                    .then(() => {
-                        if (screen.orientation && screen.orientation.lock) {
-                            screen.orientation.lock('landscape')
-                                .then(() => console.log("Orientation locked to landscape"))
-                                .catch(err => console.error("Failed to lock orientation:", err));
-                        }
-                        startGame.call(this);
-                    })
-                    .catch(err => {
-                        console.error("Fullscreen failed:", err);
-                        startGame.call(this); // Запуск даже при ошибке
-                    });
-            } else {
-                startGame.call(this);
-            }
-        }, this);
+        this.input.once('pointerdown', () => startGame.call(this), this); // Упрощаем: сразу вызываем startGame
     } else {
         startScreen.add(this.add.text(gameWidth / 2, gameHeight / 2 + 50, 'Press ENTER to Start', {
             fontFamily: 'MedievalSharp',
@@ -291,7 +271,6 @@ function create() {
 
     this.scale.on('resize', resize, this);
 }
-
 function startGame() {
     if (gameStarted) return;
     gameStarted = true;
@@ -299,11 +278,23 @@ function startGame() {
 
     let scene = this;
 
+    // Активируем полноэкранный режим для мобильных устройств
+    if (isMobileDevice() && !document.fullscreenElement) {
+        document.documentElement.requestFullscreen()
+            .then(() => {
+                if (screen.orientation && screen.orientation.lock) {
+                    screen.orientation.lock('landscape')
+                        .then(() => console.log("Orientation locked to landscape"))
+                        .catch(err => console.error("Failed to lock orientation:", err));
+                }
+            })
+            .catch(err => console.error("Fullscreen failed:", err));
+    }
+
     scene.add.image(gameWidth / 2, gameHeight / 2, 'cave_bg').setDisplaySize(gameWidth, gameHeight);
     platforms = createPlatforms(scene, gameWidth, gameHeight);
     treasure = scene.physics.add.staticSprite(gameWidth / 2, gameHeight * GAME_CONSTANTS.TREASURE_Y, 'treasure')
         .setData('health', treasureHealth);
-
     uiElements = {
         hpText: scene.add.text(gameWidth / 2 - 70, gameHeight * GAME_CONSTANTS.UI_HP_Y, `Treasure HP: ${treasureHealth}`, {
             fontFamily: 'MedievalSharp',
@@ -818,9 +809,19 @@ function restartGame() {
     waveTimer = null;
     spawnQueueTimer = null;
     virtualCursors = null;
-    window.removeEventListener('resize', checkOrientation); // Очистка слушателя
-}
 
+    // Очищаем платформы явно
+    if (platforms) {
+        platforms.clear(true, true);
+        platforms = null;
+    }
+
+    if (isMobileDevice()) {
+        window.removeEventListener('resize', checkOrientation);
+    }
+
+    this.scene.get(this.scene.key).create();
+}
 function updateUI() {
     uiElements.hpText.setText(`Treasure HP: ${treasure.getData('health')}`);
     uiElements.scoreText.setText(`Score: ${score}`);
@@ -846,13 +847,11 @@ function resize(gameSize) {
         return;
     }
 
-    platforms.getChildren().forEach(platform => {
-        if (platform.y > gameHeight * 0.9) platform.setPosition(platform.x, gameHeight - GAME_CONSTANTS.TILE_SIZE / 2);
-        else if (platform.y < gameHeight * 0.6 && platform.y > gameHeight * 0.7) platform.setPosition(platform.x, gameHeight * 0.75 - GAME_CONSTANTS.TILE_SIZE / 2);
-        else if (platform.y < gameHeight * 0.6 && platform.y > gameHeight * 0.4) platform.setPosition(platform.x, gameHeight * 0.5 - GAME_CONSTANTS.TILE_SIZE / 2);
-        platform.refreshBody();
-        if (platform.debugRect) platform.debugRect.setPosition(platform.x, platform.y);
-    });
+    // Пересоздаем платформы, если они существуют
+    if (platforms) {
+        platforms.clear(true, true);
+        platforms = createPlatforms(this, gameWidth, gameHeight);
+    }
 
     treasure.setPosition(gameWidth / 2, gameHeight * GAME_CONSTANTS.TREASURE_Y);
     dragon.sprite.setPosition(gameWidth / 2, gameHeight * GAME_CONSTANTS.DRAGON_START_Y);
@@ -861,6 +860,18 @@ function resize(gameSize) {
     uiElements.scoreText.setPosition(gameWidth * GAME_CONSTANTS.UI_SCORE_X, gameHeight * 0.033);
     uiElements.dragonHpText.setPosition(gameWidth * GAME_CONSTANTS.UI_DRAGON_HP_X - 50, gameHeight * 0.033);
     uiElements.waveText.setPosition(gameWidth / 2, gameHeight * GAME_CONSTANTS.UI_WAVE_Y);
+
+    // Обновляем мобильные элементы управления
+    if (this.mobileControls) {
+        if (this.mobileControls.joystick) {
+            this.mobileControls.joystick.setPosition(gameWidth * 0.15, gameHeight * 0.85);
+        } else {
+            if (this.mobileControls.leftButton) this.mobileControls.leftButton.setPosition(gameWidth * 0.05, gameHeight * 0.85);
+            if (this.mobileControls.rightButton) this.mobileControls.rightButton.setPosition(gameWidth * 0.25, gameHeight * 0.85);
+        }
+        this.mobileControls.jumpButton.setPosition(gameWidth * 0.875, gameHeight * 0.83);
+        this.mobileControls.shootButton.setPosition(gameWidth * 0.75, gameHeight * 0.83);
+    }
 }
 
 function decreaseTreasureHealth() {
