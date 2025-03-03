@@ -1,15 +1,9 @@
-function isMobileDevice() {
-    return /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent) ||
-           (window.matchMedia && window.matchMedia("(max-width: 767px)").matches);
-}
-
 window.initMobileControls = function(scene) {
     console.log("initMobileControls called, isMobile:", isMobileDevice());
     if (!isMobileDevice()) return;
 
     console.log("Mobile device detected, initializing controls...");
     
-    // Используем глобальный virtualCursors из game.js
     virtualCursors = virtualCursors || { 
         left: { isDown: false }, 
         right: { isDown: false }, 
@@ -17,7 +11,6 @@ window.initMobileControls = function(scene) {
         shoot: { isDown: false }
     };
 
-    // Инициализация виртуального джойстика
     let joystick;
     if (scene.plugins.get('rexVirtualJoystick')) {
         joystick = scene.plugins.get('rexVirtualJoystick').add(scene, {
@@ -35,7 +28,6 @@ window.initMobileControls = function(scene) {
         console.warn("rexVirtualJoystick plugin not available, falling back to buttons");
     }
 
-    // Кнопки как запасной вариант, если джойстик не работает
     const buttonSize = gameWidth * GAME_CONSTANTS.BUTTON_SIZE_FACTOR;
     let leftButton, rightButton;
     if (!joystick) {
@@ -48,7 +40,6 @@ window.initMobileControls = function(scene) {
             .setAlpha(0.7)
             .setDepth(1000);
 
-        // Обработка кнопок влево/вправо с удержанием
         leftButton.on('pointerdown', () => {
             virtualCursors.left.isDown = true;
             console.log("Left button pressed");
@@ -76,7 +67,6 @@ window.initMobileControls = function(scene) {
         });
     }
 
-    // Кнопка прыжка с удержанием
     let jumpButton = scene.add.circle(gameWidth * 0.875, gameHeight * 0.9, buttonSize / 1.7, 0x66ff66)
         .setInteractive()
         .setAlpha(0.7)
@@ -95,30 +85,14 @@ window.initMobileControls = function(scene) {
         console.log("Jump button pointer out");
     });
 
-    // Кнопка выстрела с удержанием
     let shootButton = scene.add.circle(gameWidth * 0.75, gameHeight * 0.9, buttonSize / 1.7, 0xff6666)
         .setInteractive()
         .setAlpha(0.7)
         .setDepth(1000);
 
-        shootButton.on('pointerdown', () => {
-            virtualCursors.shoot.isDown = true;
-            dragon.shoot(); // Начинаем стрельбу
-            console.log("Shoot button pressed");
-        });
-        shootButton.on('pointerup', () => {
-            virtualCursors.shoot.isDown = false;
-            dragon.stopShooting(); // Останавливаем стрельбу
-            console.log("Shoot button released");
-        });
-        shootButton.on('pointerout', () => {
-            virtualCursors.shoot.isDown = false;
-            dragon.stopShooting();
-            console.log("Shoot button pointer out");
-        });
-        
     let shootInterval = null;
     shootButton.on('pointerdown', () => {
+        virtualCursors.shoot.isDown = true;
         dragon.shoot();
         shootInterval = scene.time.addEvent({
             delay: 200,
@@ -129,6 +103,7 @@ window.initMobileControls = function(scene) {
         console.log("Shoot button pressed");
     });
     shootButton.on('pointerup', () => {
+        virtualCursors.shoot.isDown = false;
         if (shootInterval) {
             shootInterval.remove();
             shootInterval = null;
@@ -136,6 +111,7 @@ window.initMobileControls = function(scene) {
         console.log("Shoot button released");
     });
     shootButton.on('pointerout', () => {
+        virtualCursors.shoot.isDown = false;
         if (shootInterval) {
             shootInterval.remove();
             shootInterval = null;
@@ -143,7 +119,6 @@ window.initMobileControls = function(scene) {
         console.log("Shoot button pointer out");
     });
 
-    // Обработка джойстика
     if (joystick) {
         joystick.on('update', () => {
             const force = joystick.force;
@@ -153,7 +128,6 @@ window.initMobileControls = function(scene) {
         });
     }
 
-    // Сохранение мобильных элементов
     scene.mobileControls = { 
         joystick: joystick || null, 
         leftButton: leftButton || null,
@@ -162,15 +136,26 @@ window.initMobileControls = function(scene) {
         shootButton: shootButton 
     };
 
-    // Обработчик рестарта по тапу
+    // Обработка рестарта
+    let restartTapCount = 0;
     scene.input.on('pointerdown', () => {
-        console.log("Tap detected, gameOverText:", gameOverText, "visible:", gameOverText?.visible);
         if (gameOverText && gameOverText.visible) {
-            restartGame.call(scene);
+            if (restartTapCount === 0) {
+                restartTapCount++;
+                if (!document.fullscreenElement) {
+                    document.documentElement.requestFullscreen();
+                }
+                gameOverText.setText(`${gameOverText.text.split('\n')[0]}\nTap again to restart`);
+            } else if (restartTapCount === 1 && document.fullscreenElement && checkOrientationBeforeStart(scene)) {
+                // Разблокируем AudioContext при рестарте
+                if (scene.sound.context.state === 'suspended') {
+                    scene.sound.context.resume().then(() => console.log('AudioContext resumed on restart'));
+                }
+                restartGame.call(scene);
+            }
         }
     });
 
-    // Обновление позиций при изменении размера
     let originalResize = resize;
     resize = function(gameSize) {
         originalResize.call(this, gameSize);

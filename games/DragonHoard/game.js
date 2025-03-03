@@ -86,8 +86,7 @@ class Dragon {
                     .anims.play('fireball_fly', true);
                 fireball.body.setOffset(this.lastDirection === -1 ? 36 : 0, 0);
                 // Удаляем коллизию с платформами (см. пункт 2 ниже)
-                if (this.scene.sound.get('fireball_sound')) this.scene.sound.get('fireball_sound').play();
-            }
+                this.scene.sound.play('fireball_sound');            }
         };
 
         // Если таймер уже существует, не создаем новый выстрел
@@ -215,6 +214,12 @@ function create() {
         this.anims.create({ key: 'fireball_fly', frames: this.anims.generateFrameNumbers('fireball', { start: 0, end: 2 }), frameRate: 15, repeat: -1 });
     }
 
+    // Инициализация звуков
+    this.sound.add('fireball_sound', { volume: 0.5 });
+    this.sound.add('coin_steal', { volume: 0.5 });
+    this.sound.add('bonus_collect', { volume: 0.5 });
+    this.sound.add('arrow_shot', { volume: 0.5 });
+
     startScreen = this.add.group();
     startScreen.add(this.add.text(gameWidth / 2, gameHeight / 2 - 50, 'Dragon\'s Hoard', {
         fontFamily: 'VinqueRg',
@@ -235,14 +240,16 @@ function create() {
     };
 
     if (isMobileDevice()) {
-        startScreen.add(this.add.text(gameWidth / 2, gameHeight / 2 + 50, 'Tap to Start', {
+        // Текст для первого тапа
+        const tapToFullscreenText = this.add.text(gameWidth / 2, gameHeight / 2 + 50, 'Tap to Enable Fullscreen', {
             fontFamily: 'MedievalSharp',
             fontSize: '40px',
             color: '#ffffff',
             stroke: '#8b4513',
             strokeThickness: 3,
             shadow: { offsetX: 1, offsetY: 1, color: '#000', blur: 3, stroke: true, fill: true }
-        }).setOrigin(0.5));
+        }).setOrigin(0.5);
+        startScreen.add(tapToFullscreenText);
 
         orientationText = this.add.text(gameWidth / 2, gameHeight / 2 + 100, 'Please rotate to landscape', {
             fontFamily: 'MedievalSharp',
@@ -256,7 +263,65 @@ function create() {
         window.addEventListener('resize', checkOrientation);
         checkOrientation();
 
-        this.input.once('pointerdown', () => startGame.call(this), this); // Упрощаем: сразу вызываем startGame
+        let hasTapped = false;
+
+        // Первый тап: синхронный вызов полноэкранного режима и разблокировка звука
+        this.input.once('pointerdown', () => {
+            console.log('First tap detected, requesting fullscreen...');
+            hasTapped = true;
+
+            // Разблокируем AudioContext
+            if (this.sound.context.state === 'suspended') {
+                this.sound.context.resume().then(() => console.log('AudioContext resumed'));
+            }
+
+            // Синхронный вызов requestFullscreen
+            if (!document.fullscreenElement) {
+                document.documentElement.requestFullscreen();
+            }
+
+            // Попытка блокировки ориентации (если поддерживается)
+            if (screen.orientation && screen.orientation.lock) {
+                screen.orientation.lock('landscape')
+                    .catch(err => {
+                        console.error('Failed to lock orientation:', err);
+                        orientationText.setText('Rotate device manually');
+                        orientationText.setVisible(true);
+                    });
+            }
+
+            // Обновляем интерфейс для второго тапа
+            tapToFullscreenText.destroy();
+            startScreen.add(this.add.text(gameWidth / 2, gameHeight / 2 + 50, 'Tap to Start Game', {
+                fontFamily: 'MedievalSharp',
+                fontSize: '40px',
+                color: '#ffffff',
+                stroke: '#8b4513',
+                strokeThickness: 3,
+                shadow: { offsetX: 1, offsetY: 1, color: '#000', blur: 3, stroke: true, fill: true }
+            }).setOrigin(0.5));
+        }, this);
+
+        // Второй тап: проверка и запуск игры
+        this.input.on('pointerdown', () => {
+            if (hasTapped && startScreen.getChildren().some(child => child.text === 'Tap to Start Game')) {
+                console.log('Second tap detected, checking conditions...');
+                if (document.fullscreenElement && checkOrientationBeforeStart(this)) {
+                    startScreen.clear(true, true);
+                    startGame.call(this);
+                    this.input.off('pointerdown'); // Удаляем обработчик после запуска
+                } else {
+                    if (!document.fullscreenElement) {
+                        orientationText.setText('Fullscreen not active, tap again');
+                        orientationText.setVisible(true);
+                        document.documentElement.requestFullscreen(); // Повторный запрос
+                    } else {
+                        orientationText.setText('Rotate to landscape and tap again');
+                        orientationText.setVisible(true);
+                    }
+                }
+            }
+        }, this);
     } else {
         startScreen.add(this.add.text(gameWidth / 2, gameHeight / 2 + 50, 'Press ENTER to Start', {
             fontFamily: 'MedievalSharp',
@@ -270,7 +335,10 @@ function create() {
     }
 
     this.scale.on('resize', resize, this);
+    this.sound.unlock();
 }
+
+
 function startGame() {
     if (gameStarted) return;
     gameStarted = true;
@@ -279,16 +347,8 @@ function startGame() {
     let scene = this;
 
     // Активируем полноэкранный режим для мобильных устройств
-    if (isMobileDevice() && !document.fullscreenElement) {
-        document.documentElement.requestFullscreen()
-            .then(() => {
-                if (screen.orientation && screen.orientation.lock) {
-                    screen.orientation.lock('landscape')
-                        .then(() => console.log("Orientation locked to landscape"))
-                        .catch(err => console.error("Failed to lock orientation:", err));
-                }
-            })
-            .catch(err => console.error("Fullscreen failed:", err));
+    if (isMobileDevice()) {
+        scene.sound.unlock();
     }
 
     scene.add.image(gameWidth / 2, gameHeight / 2, 'cave_bg').setDisplaySize(gameWidth, gameHeight);
@@ -713,8 +773,8 @@ function shootArrow(enemy) {
         const velocityY = Math.sin(angle) * GAME_CONSTANTS.ARCHER_ARROW_SPEED;
         arrow.setVelocity(velocityX, velocityY)
             .setRotation(angle);
-        if (this.sound.get('arrow_shot')) this.sound.get('arrow_shot').play();
-    }
+            this.sound.play('arrow_shot');
+            }
 }
 
 function arrowHitDragon(dragonSprite, arrow) {
@@ -726,7 +786,7 @@ function stealCoin(enemy, treasure) {
     if (!enemy.active || enemy.getData('hasCoin') || enemy.getData('isArcher')) return;
     enemy.setData('hasCoin', true);
     enemy.coinSprite = this.add.image(enemy.x, enemy.y - 20, 'coin').setScale(0.5);
-    if (this.sound.get('coin_steal')) this.sound.get('coin_steal').play();
+    this.sound.play('coin_steal'); // Используем play вместо get
 }
 
 function hitEnemy(fireball, enemy) {
@@ -764,7 +824,7 @@ function collectBonus(dragonSprite, bonus) {
     let dragonHealth = Math.min(GAME_CONSTANTS.DRAGON_MAX_HEALTH, dragon.sprite.getData('health') + GAME_CONSTANTS.BONUS_LIFE_RESTORE);
     dragon.sprite.setData('health', dragonHealth);
     bonus.destroy();
-    if (this.sound.get('bonus_collect')) this.sound.get('bonus_collect').play();
+    this.sound.play('bonus_collect');
 }
 
 function dragonDeath(dragonSprite, enemy) {
@@ -897,4 +957,17 @@ function checkOrientation() {
         orientationText.setVisible(false);
     }
 }
+
+function checkOrientationBeforeStart(scene) {
+    if (window.innerHeight > window.innerWidth) {
+        scene.add.text(gameWidth / 2, gameHeight / 2 + 150, 'Please rotate to landscape', {
+            fontFamily: 'MedievalSharp',
+            fontSize: '30px',
+            color: '#ff0000'
+        }).setOrigin(0.5);
+        return false;
+    }
+    return true;
+}
+
 let orientationText; // Глобальная переменная для текста ориентации

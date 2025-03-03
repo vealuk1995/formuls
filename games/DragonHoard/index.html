@@ -2,9 +2,9 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <meta name="apple-mobile-web-app-capable" content="yes"> <!-- Для iOS -->
-    <meta name="mobile-web-app-capable" content="yes"> <!-- Для Android -->
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover, orientation=landscape">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="mobile-web-app-capable" content="yes">
     <title>Dragon's Hoard</title>
     <style>
         body {
@@ -46,36 +46,42 @@
         body, #game-container {
             font-family: 'MedievalSharp', 'Arial', sans-serif;
         }
+        @media (orientation: portrait) {
+            #game-container {
+                transform: rotate(90deg);
+                transform-origin: center;
+                width: 100vh;
+                height: 100vw;
+                position: absolute;
+                top: 0;
+                left: 0;
+            }
+        }
     </style>
     <link rel="preload" href="assets/fonts/MedievalSharp-Regular.ttf" as="font" type="font/ttf" crossorigin>
     <link rel="preload" href="assets/fonts/GoodVibesPro.ttf" as="font" type="font/ttf" crossorigin>
     <link rel="preload" href="assets/fonts/VinqueRg.ttf" as="font" type="font/ttf" crossorigin>
-
 </head>
 <body>
     <div id="game-container">
         <script src="lib/phaser.min.js" onerror="alert('Failed to load Phaser library')"></script>
-        <!-- Используем локальную копию плагина или CDN с запасным вариантом -->
-        <script src="lib/rexvirtualjoystickplugin.min.js" onerror="alert('Failed to load Joystick plugin from local source')"; document.write('<script src=\"https://raw.githubusercontent.com/rexrainbow/phaser3-rex-notes/master/dist/rexvirtualjoystickplugin.min.js\"></script>')"></script>
+        <script src="lib/rexvirtualjoystickplugin.min.js" onerror="alert('Failed to load Joystick plugin from local source'); document.write('<script src=\"https://raw.githubusercontent.com/rexrainbow/phaser3-rex-notes/master/dist/rexvirtualjoystickplugin.min.js\"></script>')"></script>
         <script src="game.js" onerror="alert('Failed to load game script')"></script>
         <script src="mobile.js" onerror="alert('Failed to load mobile controls script')"></script>
         <script>
-            // Автоматический переход в полноэкранный режим на мобильных устройствах
             window.onload = function() {
                 if (navigator.standalone || (window.matchMedia && window.matchMedia("(display-mode: standalone)").matches)) {
                     console.log("Already in standalone mode");
                     return;
                 }
-                if (/Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent)) {
-                    document.documentElement.requestFullscreen().catch(err => {
-                        console.log("Fullscreen request failed:", err);
-                    });
-                }
+                console.log("Waiting for user interaction to enter fullscreen");
             };
-    
-            // Убедимся, что игра занимает весь экран после изменения ориентации
+
             window.addEventListener('resize', () => {
                 document.body.style.height = window.innerHeight + 'px';
+                if (window.game) {
+                    window.game.scale.resize(window.innerWidth, window.innerHeight);
+                }
             });
         </script>
     </div>
