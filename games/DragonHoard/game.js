@@ -32,13 +32,17 @@ const GAME_CONSTANTS = {
 };
 
 const config = {
-    type: Phaser.AUTO,
+    type: Phaser.WEBGL,
     parent: 'game-container',
-    width: window.innerWidth,
-    height: window.innerHeight,
+    width: 1280,
+    height: 720,
     scale: { mode: Phaser.Scale.FIT, autoCenter: Phaser.Scale.CENTER_BOTH },
     physics: { default: 'arcade', arcade: { gravity: { y: GAME_CONSTANTS.GRAVITY_Y }, debug: false } },
-    scene: { preload, create, update }
+    scene: { preload, create, update },
+    input: {
+        touch: true,
+        activePointers: 4
+    }
 };
 
 const game = new Phaser.Game(config);
@@ -47,8 +51,7 @@ let dragon, treasure, platforms, enemies, fireballs, bonuses, arrows, cursors, v
 let score = 0, treasureHealth = GAME_CONSTANTS.INITIAL_TREASURE_HP;
 let gameWidth, gameHeight, uiElements, gameOverText, gameOverRect, debugRects = [];
 let treasureDamageTimer, waveNumber = 0, waveText, waveTimer, startScreen;
-let gameStarted = false, enemiesToSpawn = [], spawnQueueTimer, shootTimer; // Добавили shootTimer
-let orientationText;
+let gameStarted = false, enemiesToSpawn = [], spawnQueueTimer;
 
 class Dragon {
     constructor(scene, x, y, fireballs) {
@@ -62,7 +65,7 @@ class Dragon {
         this.sprite.setData('invulnerable', false);
         this.lastDirection = 1;
         scene.physics.add.collider(this.sprite, platforms);
-        if (scene.physics.config.debug) {
+        if (this.scene.physics.config.debug) {
             this.debugRect = scene.add.rectangle(x, y, 64, 64, 0x800080, 0.5).setDepth(1000);
             debugRects.push(this.debugRect);
         }
@@ -101,6 +104,7 @@ class Dragon {
                 .setScale(this.lastDirection, 1)
                 .anims.play('fireball_fly', true);
             fireball.body.setOffset(this.lastDirection === -1 ? 36 : 0, 0);
+            this.scene.physics.add.collider(fireball, platforms, () => fireball.destroy());
             if (this.scene.sound.get('fireball_sound')) this.scene.sound.get('fireball_sound').play();
         }
     }
@@ -133,6 +137,7 @@ function isMobileDevice() {
 function preload() {
     console.log('Starting preload...');
     this.load.on('progress', value => console.log(`Loading progress: ${Math.round(value * 100)}%`));
+    this.load.on('fileprogress', file => console.log(`Loading file: ${file.key}`));
     this.load.on('complete', () => console.log('All files loaded successfully'));
     this.load.on('fileerror', file => console.error(`Failed to load file: ${file.key}`));
 
@@ -158,6 +163,12 @@ function create() {
     gameWidth = this.scale.width;
     gameHeight = this.scale.height;
 
+    if (!this.plugins.get('rexVirtualJoystick')) {
+        console.warn('rexVirtualJoystick plugin not found');
+    } else {
+        console.log('rexVirtualJoystick plugin loaded successfully');
+    }
+
     if (!this.anims.exists('dragon_idle')) {
         this.anims.create({ key: 'dragon_idle', frames: this.anims.generateFrameNumbers('dragon', { start: 0, end: 0 }), frameRate: 1, repeat: -1 });
         this.anims.create({ key: 'dragon_walk', frames: this.anims.generateFrameNumbers('dragon', { start: 0, end: 3 }), frameRate: 10, repeat: -1 });
@@ -177,10 +188,12 @@ function create() {
         shadow: { offsetX: 16, offsetY: 16, color: '#000', blur: 5, stroke: true, fill: true }
     }).setOrigin(0.5));
 
+    // Разделяем текст для ПК и мобильных устройств
+    let orientationText;
     const checkOrientation = () => {
-        if (window.innerHeight > window.innerWidth && orientationText) {
+        if (window.innerHeight > window.innerWidth) {
             orientationText.setVisible(true);
-        } else if (orientationText) {
+        } else {
             orientationText.setVisible(false);
         }
     };
@@ -205,21 +218,23 @@ function create() {
         startScreen.add(orientationText);
 
         window.addEventListener('resize', checkOrientation);
-        this.checkOrientationHandler = checkOrientation;
         checkOrientation();
 
         this.input.once('pointerdown', () => {
+            console.log("Start game tap detected");
             if (!document.fullscreenElement) {
                 document.documentElement.requestFullscreen()
                     .then(() => {
                         if (screen.orientation && screen.orientation.lock) {
-                            screen.orientation.lock('landscape').catch(err => console.error("Failed to lock orientation:", err));
+                            screen.orientation.lock('landscape')
+                                .then(() => console.log("Orientation locked to landscape"))
+                                .catch(err => console.error("Failed to lock orientation:", err));
                         }
                         startGame.call(this);
                     })
                     .catch(err => {
                         console.error("Fullscreen failed:", err);
-                        startGame.call(this);
+                        startGame.call(this); // Запуск даже при ошибке
                     });
             } else {
                 startGame.call(this);
@@ -244,9 +259,9 @@ function startGame() {
     if (gameStarted) return;
     gameStarted = true;
     startScreen.clear(true, true);
-    if (this.checkOrientationHandler) window.removeEventListener('resize', this.checkOrientationHandler);
 
     let scene = this;
+
     scene.add.image(gameWidth / 2, gameHeight / 2, 'cave_bg').setDisplaySize(gameWidth, gameHeight);
     platforms = createPlatforms(scene, gameWidth, gameHeight);
     treasure = scene.physics.add.staticSprite(gameWidth / 2, gameHeight * GAME_CONSTANTS.TREASURE_Y, 'treasure')
@@ -258,61 +273,52 @@ function startGame() {
             fontSize: '28px',
             color: '#ffffff',
             stroke: '#8b4513',
-            strokeThickness: 2
+            strokeThickness: 2,
+            shadow: { offsetX: 1, offsetY: 1, color: '#000', blur: 2, stroke: true, fill: true }
         }),
         scoreText: scene.add.text(gameWidth * GAME_CONSTANTS.UI_SCORE_X, gameHeight * 0.033, 'Score: 0', {
             fontFamily: 'MedievalSharp',
             fontSize: '28px',
             color: '#ffd700',
             stroke: '#8b4513',
-            strokeThickness: 2
+            strokeThickness: 2,
+            shadow: { offsetX: 1, offsetY: 1, color: '#000', blur: 2, stroke: true, fill: true }
         }),
         dragonHpText: scene.add.text(gameWidth * GAME_CONSTANTS.UI_DRAGON_HP_X - 70, gameHeight * 0.033, `Dragon HP: ${GAME_CONSTANTS.DRAGON_MAX_HEALTH}`, {
             fontFamily: 'MedievalSharp',
             fontSize: '28px',
             color: '#ffffff',
             stroke: '#8b4513',
-            strokeThickness: 2
+            strokeThickness: 2,
+            shadow: { offsetX: 1, offsetY: 1, color: '#000', blur: 2, stroke: true, fill: true }
         }),
         waveText: scene.add.text(gameWidth / 2, gameHeight * GAME_CONSTANTS.UI_WAVE_Y, '', {
             fontFamily: 'MedievalSharp',
             fontSize: '32px',
             color: '#ffd700',
             stroke: '#8b4513',
-            strokeThickness: 3
+            strokeThickness: 3,
+            shadow: { offsetX: 1, offsetY: 1, color: '#000', blur: 3, stroke: true, fill: true }
         }).setOrigin(0.5)
     };
 
-    fireballs = scene.physics.add.group({ defaultKey: 'fireball', maxSize: GAME_CONSTANTS.MAX_FIREBALLS });
+    fireballs = scene.physics.add.group({ defaultKey: 'fireball', maxSize: GAME_CONSTANTS.MAX_FIREBALLS, gravityY: 0 });
     enemies = scene.physics.add.group({ maxSize: GAME_CONSTANTS.MAX_ENEMIES });
     bonuses = scene.physics.add.group({ maxSize: GAME_CONSTANTS.MAX_BONUSES });
-    arrows = scene.physics.add.group({ defaultKey: 'arrow', maxSize: GAME_CONSTANTS.MAX_ARROWS });
+    arrows = scene.physics.add.group({ defaultKey: 'arrow', maxSize: GAME_CONSTANTS.MAX_ARROWS, gravityY: 0 });
 
     dragon = new Dragon(scene, gameWidth / 2, gameHeight * GAME_CONSTANTS.DRAGON_START_Y, fireballs);
 
     cursors = scene.input.keyboard.createCursorKeys();
+    scene.input.keyboard.on('keydown-SPACE', () => dragon.shoot(), scene);
     scene.input.keyboard.on('keydown-R', () => restartGame.call(scene));
 
-    // Добавляем обработчики для стрельбы по зажатию пробела
-    scene.input.keyboard.on('keydown-SPACE', () => {
-        if (!shootTimer) {
-            dragon.shoot(); // Первоначальный выстрел
-            shootTimer = scene.time.addEvent({
-                delay: 200, // Частота стрельбы (200 мс)
-                callback: () => dragon.shoot(),
-                callbackScope: scene,
-                loop: true
-            });
-        }
-    });
-    scene.input.keyboard.on('keyup-SPACE', () => {
-        if (shootTimer) {
-            shootTimer.remove();
-            shootTimer = null;
-        }
-    });
-
-    virtualCursors = { left: { isDown: false }, right: { isDown: false }, up: { isDown: false }, shoot: { isDown: false } };
+    virtualCursors = { 
+        left: { isDown: false }, 
+        right: { isDown: false }, 
+        up: { isDown: false },
+        shoot: { isDown: false }
+    };
 
     scene.physics.add.collider(enemies, platforms);
     scene.physics.add.overlap(enemies, treasure, stealCoin, null, scene);
@@ -339,13 +345,18 @@ function update() {
 
     if (isMobileDevice() && virtualCursors) {
         dragon.move(virtualCursors);
-        if (virtualCursors.shoot.isDown) dragon.shoot();
+        if (virtualCursors.shoot.isDown) {
+            dragon.shoot();
+        }
     } else {
         dragon.move(cursors);
-        // Стрельба теперь обрабатывается через таймер, а не здесь
+        if (cursors.space.isDown) {
+            dragon.shoot();
+        }
     }
 
-    enemies.getChildren().filter(enemy => enemy.active).forEach(enemy => {
+    enemies.getChildren().forEach(enemy => {
+        if (!enemy.active) return;
         let hasCoin = enemy.getData('hasCoin') || false;
         let spawnSide = enemy.getData('spawnSide') || 'left';
         let isArcher = enemy.getData('isArcher') || false;
@@ -374,7 +385,9 @@ function update() {
             if (enemy.x < 0 || enemy.x > gameWidth) enemy.destroy();
         } else {
             enemy.body.setAllowGravity(true);
-            if (!enemy.platformCollider) enemy.platformCollider = this.physics.add.collider(enemy, platforms);
+            if (!enemy.platformCollider) {
+                enemy.platformCollider = this.physics.add.collider(enemy, platforms);
+            }
             let directionX = treasure.x - enemy.x;
             enemy.setVelocityX(directionX > 0 ? GAME_CONSTANTS.ENEMY_SPEED : -GAME_CONSTANTS.ENEMY_SPEED)
                 .setScale(directionX > 0 ? 1 : -1, 1);
@@ -385,11 +398,11 @@ function update() {
     });
 
     fireballs.children.each(fireball => {
-        if (fireball.active && (fireball.x < 0 || fireball.x > gameWidth)) fireball.destroy();
+        if (fireball.x < 0 || fireball.x > gameWidth) fireball.destroy();
     });
 
     arrows.children.each(arrow => {
-        if (arrow.active && (arrow.x < 0 || arrow.x > gameWidth)) arrow.destroy();
+        if (arrow.x < 0 || arrow.x > gameWidth) arrow.destroy();
     });
 
     updateUI.call(this);
@@ -397,11 +410,13 @@ function update() {
     if (waveTimer && waveTimer.getRemaining() > 0) {
         uiElements.waveText.setText(`Wave ${waveNumber} starts in ${Math.ceil(waveTimer.getRemaining() / 1000)}`);
     } else if (enemies.countActive(true) === 0 && enemiesToSpawn.length === 0 && !waveTimer) {
+        console.log(`Wave ${waveNumber} completed, starting next wave...`);
         startNextWave.call(this);
     }
 
     if (treasure.getData('health') <= 0) gameOver.call(this, 'Treasure Lost');
 }
+
 function createPlatforms(scene, width, height) {
     let platforms = scene.physics.add.staticGroup();
     const tileSize = GAME_CONSTANTS.TILE_SIZE;
@@ -416,7 +431,7 @@ function createPlatforms(scene, width, height) {
         }
     }
 
-    for (let x = 0; x < 9 * tileSize; x += tileSize) {
+    for (let x = 0; x < 7 * tileSize; x += tileSize) {
         let platform = platforms.create(width * 0.15 - 3.5 * tileSize + x + tileSize / 2, height * 0.75 - tileSize / 2, 'platform_tile')
             .setDisplaySize(tileSize, tileSize)
             .refreshBody();
@@ -437,7 +452,7 @@ function createPlatforms(scene, width, height) {
     }
 
     for (let x = 0; x < 5 * tileSize; x += tileSize) {
-        let platform = platforms.create(width * 0.1875 - 2.5 * tileSize + x + tileSize / 2, height * 0.45 - tileSize / 2, 'platform_tile')
+        let platform = platforms.create(width * 0.1875 - 2.5 * tileSize + x + tileSize / 2, height * 0.5 - tileSize / 2, 'platform_tile')
             .setDisplaySize(tileSize, tileSize)
             .refreshBody();
         if (scene.physics.config.debug) {
@@ -447,7 +462,7 @@ function createPlatforms(scene, width, height) {
     }
 
     for (let x = 0; x < 4 * tileSize; x += tileSize) {
-        let platform = platforms.create(width * 0.8125 - 2 * tileSize + x + tileSize / 2, height * 0.45 - tileSize / 2, 'platform_tile')
+        let platform = platforms.create(width * 0.8125 - 2 * tileSize + x + tileSize / 2, height * 0.5 - tileSize / 2, 'platform_tile')
             .setDisplaySize(tileSize, tileSize)
             .refreshBody();
         if (scene.physics.config.debug) {
@@ -457,7 +472,7 @@ function createPlatforms(scene, width, height) {
     }
 
     for (let x = 0; x < 6 * tileSize; x += tileSize) {
-        let platform = platforms.create(width * 0.5 - 3 * tileSize + x + tileSize / 2, height * 0.6 - tileSize / 2, 'platform_tile')
+        let platform = platforms.create(width * 0.5 - 3 * tileSize + x + tileSize / 2, height * 0.625 - tileSize / 2, 'platform_tile')
             .setDisplaySize(tileSize, tileSize)
             .refreshBody();
         if (scene.physics.config.debug) {
@@ -466,17 +481,27 @@ function createPlatforms(scene, width, height) {
         }
     }
 
+    platforms.getChildren().forEach(platform => {
+        if (!platform.texture || platform.texture.key === '__MISSING') {
+            console.warn(`Platform at (${platform.x}, ${platform.y}) has no texture, using fallback.`);
+            platform.setTexture(null).setFillStyle(0xff0000);
+        }
+    });
+
+    console.log('Platforms created:', platforms.getChildren().length);
     return platforms;
 }
 
 function startNextWave() {
     if (waveTimer) return;
     waveNumber++;
+    console.log(`Preparing wave ${waveNumber}`);
     uiElements.waveText.setText(`Wave ${waveNumber} incoming...`);
 
     spawnBonus.call(this, gameWidth * 0.5, gameHeight * 0.625 - 50);
 
     waveTimer = this.time.delayedCall(GAME_CONSTANTS.WAVE_PREPARATION_TIME, () => {
+        console.log(`Starting wave ${waveNumber}`);
         uiElements.waveText.setText(`Wave ${waveNumber}`);
         spawnWave.call(this);
         waveTimer = null;
@@ -484,15 +509,18 @@ function startNextWave() {
 }
 
 function spawnWave() {
-    if (enemies.countActive(true) >= GAME_CONSTANTS.MAX_ENEMIES) return;
+    if (enemies.countActive(true) >= GAME_CONSTANTS.MAX_ENEMIES) {
+        console.error(`Wave ${waveNumber}: Enemy limit reached (${GAME_CONSTANTS.MAX_ENEMIES})`);
+        return;
+    }
 
-    let enemyCount = Math.min(waveNumber + 1, 10); // Обычные враги (knight или griffin)
+    let enemyCount = Math.min(waveNumber + 1, 10);
     enemiesToSpawn = [];
     let platformHeights = [gameHeight * 0.5 - 100, gameHeight * 0.75 - 100, gameHeight - 100];
     let spawnPositions = [];
-    const MIN_DISTANCE_TO_DRAGON = 200;
 
-    // Спавн обычных врагов (knight или griffin)
+    console.log(`Spawning ${enemyCount} enemies for wave ${waveNumber}`);
+
     for (let i = 0; i < enemyCount; i++) {
         let type = Phaser.Math.RND.pick(['knight', 'griffin']);
         let y = Phaser.Math.RND.pick(platformHeights);
@@ -501,91 +529,43 @@ function spawnWave() {
             x = Math.random() < 0.5 ? gameWidth * 0.0625 + Phaser.Math.Between(-50, 50) : gameWidth * 0.9375 + Phaser.Math.Between(-50, 50);
             spawnSide = x < gameWidth / 2 ? 'left' : 'right';
             attempts++;
-            if (attempts > 20) {
-                x = spawnSide === 'left' ? gameWidth * 0.0625 : gameWidth * 0.9375;
-                break;
-            }
-        } while (
-            spawnPositions.some(pos => Phaser.Math.Distance.Between(x, y, pos.x, pos.y) < GAME_CONSTANTS.MIN_ENEMY_SPACING) ||
-            Phaser.Math.Distance.Between(x, y, dragon.sprite.x, dragon.sprite.y) < MIN_DISTANCE_TO_DRAGON
-        );
-        spawnPositions.push({ x, y });
-        enemiesToSpawn.push({ x, y, type, spawnSide, isArcher: false });
-    }
-
-    // Спавн лучников в зависимости от волны
-    // Волны 1-2: Нет лучников (условие отсутствует)
-    // Волны 3-5: 1 лучник в центре
-    if (waveNumber >= 3 && waveNumber <= 5) {
-        let centerArcherX = gameWidth * 0.5;
-        let centerArcherY = gameHeight * 0.625 - 100;
-        if (
-            !spawnPositions.some(pos => Phaser.Math.Distance.Between(centerArcherX, centerArcherY, pos.x, pos.y) < GAME_CONSTANTS.MIN_ENEMY_SPACING) &&
-            Phaser.Math.Distance.Between(centerArcherX, centerArcherY, dragon.sprite.x, dragon.sprite.y) >= MIN_DISTANCE_TO_DRAGON
-        ) {
-            enemiesToSpawn.push({ x: centerArcherX, y: centerArcherY, type: 'archer', spawnSide: 'center', isArcher: true });
-            spawnPositions.push({ x: centerArcherX, y: centerArcherY });
+            if (attempts > 10) break;
+        } while (spawnPositions.some(pos => Phaser.Math.Distance.Between(x, y, pos.x, pos.y) < GAME_CONSTANTS.MIN_ENEMY_SPACING));
+        if (attempts <= 10) {
+            spawnPositions.push({ x, y });
+            enemiesToSpawn.push({ x, y, type, spawnSide, isArcher: false });
         }
     }
 
-    // Волны 6 и выше: До 3 лучников (центр, слева сверху, справа сверху)
+    if (waveNumber >= 3) {
+        let archerX = gameWidth * 0.5;
+        if (!spawnPositions.some(pos => Phaser.Math.Distance.Between(archerX, gameHeight * 0.625 - 100, pos.x, pos.y) < GAME_CONSTANTS.MIN_ENEMY_SPACING)) {
+            enemiesToSpawn.push({ x: archerX, y: gameHeight * 0.625 - 100, type: 'archer', spawnSide: 'center', isArcher: true });
+            spawnPositions.push({ x: archerX, y: gameHeight * 0.625 - 100 });
+        }
+    }
     if (waveNumber >= 6) {
-        // Лучник в центре
-        let centerArcherX = gameWidth * 0.5;
-        let centerArcherY = gameHeight * 0.625 - 100;
-        if (
-            !spawnPositions.some(pos => Phaser.Math.Distance.Between(centerArcherX, centerArcherY, pos.x, pos.y) < GAME_CONSTANTS.MIN_ENEMY_SPACING) &&
-            Phaser.Math.Distance.Between(centerArcherX, centerArcherY, dragon.sprite.x, dragon.sprite.y) >= MIN_DISTANCE_TO_DRAGON
-        ) {
-            enemiesToSpawn.push({ x: centerArcherX, y: centerArcherY, type: 'archer', spawnSide: 'center', isArcher: true });
-            spawnPositions.push({ x: centerArcherX, y: centerArcherY });
+        let leftX = gameWidth * 0.1875;
+        let rightX = gameWidth * 0.8125;
+        if (!spawnPositions.some(pos => Phaser.Math.Distance.Between(leftX, gameHeight * 0.5 - 100, pos.x, pos.y) < GAME_CONSTANTS.MIN_ENEMY_SPACING)) {
+            enemiesToSpawn.push({ x: leftX, y: gameHeight * 0.5 - 100, type: 'archer', spawnSide: 'left', isArcher: true });
+            spawnPositions.push({ x: leftX, y: gameHeight * 0.5 - 100 });
         }
-
-        // Лучник слева сверху
-        let leftTopArcherX = gameWidth * 0.15;
-        let leftTopArcherY = gameHeight * 0.75 - 100;
-        if (
-            !spawnPositions.some(pos => Phaser.Math.Distance.Between(leftTopArcherX, leftTopArcherY, pos.x, pos.y) < GAME_CONSTANTS.MIN_ENEMY_SPACING) &&
-            Phaser.Math.Distance.Between(leftTopArcherX, leftTopArcherY, dragon.sprite.x, dragon.sprite.y) >= MIN_DISTANCE_TO_DRAGON
-        ) {
-            enemiesToSpawn.push({ x: leftTopArcherX, y: leftTopArcherY, type: 'archer', spawnSide: 'left', isArcher: true });
-            spawnPositions.push({ x: leftTopArcherX, y: leftTopArcherY });
-        }
-
-        // Лучник справа сверху
-        let rightTopArcherX = gameWidth * 0.85;
-        let rightTopArcherY = gameHeight * 0.75 - 100;
-        if (
-            !spawnPositions.some(pos => Phaser.Math.Distance.Between(rightTopArcherX, rightTopArcherY, pos.x, pos.y) < GAME_CONSTANTS.MIN_ENEMY_SPACING) &&
-            Phaser.Math.Distance.Between(rightTopArcherX, rightTopArcherY, dragon.sprite.x, dragon.sprite.y) >= MIN_DISTANCE_TO_DRAGON
-        ) {
-            enemiesToSpawn.push({ x: rightTopArcherX, y: rightTopArcherY, type: 'archer', spawnSide: 'right', isArcher: true });
-            spawnPositions.push({ x: rightTopArcherX, y: rightTopArcherY });
+        if (!spawnPositions.some(pos => Phaser.Math.Distance.Between(rightX, gameHeight * 0.5 - 100, pos.x, pos.y) < GAME_CONSTANTS.MIN_ENEMY_SPACING)) {
+            enemiesToSpawn.push({ x: rightX, y: gameHeight * 0.5 - 100, type: 'archer', spawnSide: 'right', isArcher: true });
+            spawnPositions.push({ x: rightX, y: gameHeight * 0.5 - 100 });
         }
     }
-
-    // Волны 9 и выше: До 5 лучников (добавляем слева посередине и справа посередине)
     if (waveNumber >= 9) {
-        // Лучник слева посередине
-        let leftMidArcherX = gameWidth * 0.1875;
-        let leftMidArcherY = gameHeight * 0.5 - 100;
-        if (
-            !spawnPositions.some(pos => Phaser.Math.Distance.Between(leftMidArcherX, leftMidArcherY, pos.x, pos.y) < GAME_CONSTANTS.MIN_ENEMY_SPACING) &&
-            Phaser.Math.Distance.Between(leftMidArcherX, leftMidArcherY, dragon.sprite.x, dragon.sprite.y) >= MIN_DISTANCE_TO_DRAGON
-        ) {
-            enemiesToSpawn.push({ x: leftMidArcherX, y: leftMidArcherY, type: 'archer', spawnSide: 'left', isArcher: true });
-            spawnPositions.push({ x: leftMidArcherX, y: leftMidArcherY });
+        let leftLowX = gameWidth * 0.15;
+        let rightLowX = gameWidth * 0.85;
+        if (!spawnPositions.some(pos => Phaser.Math.Distance.Between(leftLowX, gameHeight * 0.75 - 100, pos.x, pos.y) < GAME_CONSTANTS.MIN_ENEMY_SPACING)) {
+            enemiesToSpawn.push({ x: leftLowX, y: gameHeight * 0.75 - 100, type: 'archer', spawnSide: 'left', isArcher: true });
+            spawnPositions.push({ x: leftLowX, y: gameHeight * 0.75 - 100 });
         }
-
-        // Лучник справа посередине
-        let rightMidArcherX = gameWidth * 0.8125;
-        let rightMidArcherY = gameHeight * 0.5 - 100;
-        if (
-            !spawnPositions.some(pos => Phaser.Math.Distance.Between(rightMidArcherX, rightMidArcherY, pos.x, pos.y) < GAME_CONSTANTS.MIN_ENEMY_SPACING) &&
-            Phaser.Math.Distance.Between(rightMidArcherX, rightMidArcherY, dragon.sprite.x, dragon.sprite.y) >= MIN_DISTANCE_TO_DRAGON
-        ) {
-            enemiesToSpawn.push({ x: rightMidArcherX, y: rightMidArcherY, type: 'archer', spawnSide: 'right', isArcher: true });
-            spawnPositions.push({ x: rightMidArcherX, y: rightMidArcherY });
+        if (!spawnPositions.some(pos => Phaser.Math.Distance.Between(rightLowX, gameHeight * 0.75 - 100, pos.x, pos.y) < GAME_CONSTANTS.MIN_ENEMY_SPACING)) {
+            enemiesToSpawn.push({ x: rightLowX, y: gameHeight * 0.75 - 100, type: 'archer', spawnSide: 'right', isArcher: true });
+            spawnPositions.push({ x: rightLowX, y: gameHeight * 0.75 - 100 });
         }
     }
 
@@ -602,13 +582,17 @@ function spawnWave() {
         });
     }
 }
+
 function spawnNextEnemy() {
     if (enemiesToSpawn.length > 0 && enemies.countActive(true) < GAME_CONSTANTS.MAX_ENEMIES) {
         let enemy = enemiesToSpawn.shift();
         spawnEnemy.call(this, enemy.x, enemy.y, enemy.type, enemy.spawnSide, enemy.isArcher);
-    } else if (enemies.countActive(true) === 0 && enemiesToSpawn.length === 0 && spawnQueueTimer) {
-        spawnQueueTimer.remove();
-        spawnQueueTimer = null;
+    } else if (enemies.countActive(true) === 0 && enemiesToSpawn.length === 0) {
+        if (spawnQueueTimer) {
+            spawnQueueTimer.remove();
+            spawnQueueTimer = null;
+        }
+        startNextWave.call(this);
     }
 }
 
@@ -643,6 +627,7 @@ function spawnEnemy(x, y, type, spawnSide, isArcher = false) {
             enemy.debugRect = this.add.rectangle(x, y, 48, 48, 0xff0000, 0.5).setDepth(1000);
             debugRects.push(enemy.debugRect);
         }
+        console.log(`Spawned ${type} at (${x}, ${y}), active enemies: ${enemies.countActive(true)}`);
     }
 }
 
@@ -653,10 +638,12 @@ function shootArrow(enemy) {
         arrow.setActive(true).setVisible(true)
             .body.setAllowGravity(false);
         const directionX = dragon.sprite.x - enemy.x;
+        const directionY = dragon.sprite.y - enemy.y;
         const angle = Phaser.Math.Angle.Between(enemy.x, enemy.y, dragon.sprite.x, dragon.sprite.y);
         const velocityX = Math.cos(angle) * GAME_CONSTANTS.ARCHER_ARROW_SPEED;
         const velocityY = Math.sin(angle) * GAME_CONSTANTS.ARCHER_ARROW_SPEED;
-        arrow.setVelocity(velocityX, velocityY).setRotation(angle);
+        arrow.setVelocity(velocityX, velocityY)
+            .setRotation(angle);
         if (this.sound.get('arrow_shot')) this.sound.get('arrow_shot').play();
     }
 }
@@ -676,13 +663,20 @@ function stealCoin(enemy, treasure) {
 function hitEnemy(fireball, enemy) {
     fireball.destroy();
     if (enemy.jumpTimer) enemy.jumpTimer.remove();
-    if (enemy.shootTimer) enemy.shootTimer.remove();
-    if (enemy.platformCollider) this.physics.world.removeCollider(enemy.platformCollider);
+    if (enemy.shootTimer) {
+        enemy.shootTimer.remove();
+        enemy.shootTimer = null;
+    }
+    if (enemy.platformCollider) {
+        this.physics.world.removeCollider(enemy.platformCollider);
+        enemy.platformCollider = null;
+    }
     if (enemy.coinSprite) enemy.coinSprite.destroy();
     if (enemy.debugRect) enemy.debugRect.destroy();
     enemy.destroy();
     score += 10;
     if (Math.random() < 0.2) spawnBonus(enemy.x, enemy.y);
+    console.log(`Enemy destroyed, active enemies: ${enemies.countActive(true)}`);
 }
 
 function spawnBonus(x, y) {
@@ -690,7 +684,8 @@ function spawnBonus(x, y) {
     let bonus = bonuses.get(x, y, 'crystal_bonus');
     if (bonus) {
         bonus.setActive(true).setVisible(true)
-            .setVelocityY(100);
+            .setVelocityY(100)
+            .setData('isWaveBonus', true);
     }
 }
 
@@ -717,14 +712,15 @@ function gameOver(message) {
     });
     gameOverRect = this.add.rectangle(gameWidth / 2, gameHeight / 2, gameWidth, gameHeight, 0x000000, 0.7).setDepth(1000);
     gameOverText = this.add.text(gameWidth / 2, gameHeight / 2,
-        `${message}\nWave: ${waveNumber}\nScore: ${score}\nTap or Press R to Restart`,
+        `${message}\nWave: ${waveNumber}\nScore: ${score}\nTap to Restart (or press R)`,
         {
             fontFamily: 'MedievalSharp',
             fontSize: '60px',
             color: '#ff0000',
             align: 'center',
             stroke: '#ffd700',
-            strokeThickness: 6
+            strokeThickness: 6,
+            shadow: { offsetX: 3, offsetY: 3, color: '#000', blur: 5, stroke: true, fill: true }
         }).setOrigin(0.5).setDepth(1001);
 }
 
@@ -743,13 +739,8 @@ function restartGame() {
     enemiesToSpawn = [];
     waveTimer = null;
     spawnQueueTimer = null;
-    if (shootTimer) {
-        shootTimer.remove();
-        shootTimer = null;
-    }
     virtualCursors = null;
-    if (this.checkOrientationHandler) window.removeEventListener('resize', this.checkOrientationHandler);
-    orientationText = null;
+    window.removeEventListener('resize', checkOrientation); // Очистка слушателя
 }
 
 function updateUI() {
@@ -795,12 +786,26 @@ function resize(gameSize) {
 }
 
 function decreaseTreasureHealth() {
-    let enemiesInRange = enemies.getChildren().filter(enemy => {
-        if (!enemy.active || enemy.getData('hasCoin')) return false;
-        return Phaser.Math.Distance.Between(treasure.x, treasure.y, enemy.x, enemy.y) < GAME_CONSTANTS.TREASURE_DAMAGE_RADIUS;
-    }).length;
-    if (enemiesInRange > 0) {
-        treasureHealth = Math.max(0, treasure.getData('health') - enemiesInRange);
+    let treasureDamaged = false;
+    enemies.getChildren().forEach(enemy => {
+        if (!enemy.active || enemy.getData('hasCoin')) return;
+        const distance = Phaser.Math.Distance.Between(treasure.x, treasure.y, enemy.x, enemy.y);
+        if (distance < GAME_CONSTANTS.TREASURE_DAMAGE_RADIUS) {
+            treasureDamaged = true;
+        }
+    });
+    if (treasureDamaged) {
+        treasureHealth = Math.max(0, treasure.getData('health') - 1);
         treasure.setData('health', treasureHealth);
     }
 }
+
+// Объявляем checkOrientation в глобальной области для доступа в restartGame
+function checkOrientation() {
+    if (window.innerHeight > window.innerWidth) {
+        orientationText.setVisible(true);
+    } else {
+        orientationText.setVisible(false);
+    }
+}
+let orientationText; // Глобальная переменная для текста ориентации

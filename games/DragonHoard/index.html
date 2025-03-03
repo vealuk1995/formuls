@@ -3,8 +3,8 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <meta name="apple-mobile-web-app-capable" content="yes">
-    <meta name="mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-capable" content="yes"> <!-- Для iOS -->
+    <meta name="mobile-web-app-capable" content="yes"> <!-- Для Android -->
     <title>Dragon's Hoard</title>
     <style>
         body {
@@ -36,6 +36,10 @@
             src: url('assets/fonts/MedievalSharp-Regular.ttf') format('truetype');
         }
         @font-face {
+            font-family: 'GoodVibesPro';
+            src: url('assets/fonts/GoodVibesPro.ttf') format('truetype');
+        }
+        @font-face {
             font-family: 'VinqueRg';
             src: url('assets/fonts/VinqueRg.ttf') format('truetype');
         }
@@ -44,15 +48,19 @@
         }
     </style>
     <link rel="preload" href="assets/fonts/MedievalSharp-Regular.ttf" as="font" type="font/ttf" crossorigin>
+    <link rel="preload" href="assets/fonts/GoodVibesPro.ttf" as="font" type="font/ttf" crossorigin>
     <link rel="preload" href="assets/fonts/VinqueRg.ttf" as="font" type="font/ttf" crossorigin>
+
 </head>
 <body>
     <div id="game-container">
         <script src="lib/phaser.min.js" onerror="alert('Failed to load Phaser library')"></script>
-        <script src="lib/rexvirtualjoystickplugin.min.js" onerror="console.warn('Joystick plugin failed to load, falling back to buttons')"></script>
+        <!-- Используем локальную копию плагина или CDN с запасным вариантом -->
+        <script src="lib/rexvirtualjoystickplugin.min.js" onerror="alert('Failed to load Joystick plugin from local source')"; document.write('<script src=\"https://raw.githubusercontent.com/rexrainbow/phaser3-rex-notes/master/dist/rexvirtualjoystickplugin.min.js\"></script>')"></script>
         <script src="game.js" onerror="alert('Failed to load game script')"></script>
         <script src="mobile.js" onerror="alert('Failed to load mobile controls script')"></script>
         <script>
+            // Автоматический переход в полноэкранный режим на мобильных устройствах
             window.onload = function() {
                 if (navigator.standalone || (window.matchMedia && window.matchMedia("(display-mode: standalone)").matches)) {
                     console.log("Already in standalone mode");
@@ -64,6 +72,8 @@
                     });
                 }
             };
+    
+            // Убедимся, что игра занимает весь экран после изменения ориентации
             window.addEventListener('resize', () => {
                 document.body.style.height = window.innerHeight + 'px';
             });
