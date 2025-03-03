@@ -187,37 +187,70 @@ function create() {
         strokeThickness: 12,
         shadow: { offsetX: 16, offsetY: 16, color: '#000', blur: 5, stroke: true, fill: true }
     }).setOrigin(0.5));
-    startScreen.add(this.add.text(gameWidth / 2, gameHeight / 2 + 50, 'Press ENTER or Tap to Start', {
-        fontFamily: 'MedievalSharp',
-        fontSize: '40px',
-        color: '#ffffff',
-        stroke: '#8b4513',
-        strokeThickness: 3,
-        shadow: { offsetX: 1, offsetY: 1, color: '#000', blur: 3, stroke: true, fill: true }
-    }).setOrigin(0.5));
 
-    // Улучшенная обработка старта игры для мобильных устройств и ПК
+    // Разделяем текст для ПК и мобильных устройств
+    let orientationText;
+    const checkOrientation = () => {
+        if (window.innerHeight > window.innerWidth) {
+            orientationText.setVisible(true);
+        } else {
+            orientationText.setVisible(false);
+        }
+    };
+
     if (isMobileDevice()) {
+        startScreen.add(this.add.text(gameWidth / 2, gameHeight / 2 + 50, 'Tap to Start Fullscreen', {
+            fontFamily: 'MedievalSharp',
+            fontSize: '40px',
+            color: '#ffffff',
+            stroke: '#8b4513',
+            strokeThickness: 3,
+            shadow: { offsetX: 1, offsetY: 1, color: '#000', blur: 3, stroke: true, fill: true }
+        }).setOrigin(0.5));
+
+        orientationText = this.add.text(gameWidth / 2, gameHeight / 2 + 100, 'Please rotate to landscape', {
+            fontFamily: 'MedievalSharp',
+            fontSize: '30px',
+            color: '#ff0000',
+            stroke: '#ffd700',
+            strokeThickness: 2
+        }).setOrigin(0.5).setVisible(false);
+        startScreen.add(orientationText);
+
+        window.addEventListener('resize', checkOrientation);
+        checkOrientation();
+
         this.input.once('pointerdown', () => {
             console.log("Start game tap detected");
             if (!document.fullscreenElement) {
                 document.documentElement.requestFullscreen()
                     .then(() => {
                         if (screen.orientation && screen.orientation.lock) {
-                            screen.orientation.lock('landscape').catch(err => console.error("Failed to lock orientation:", err));
+                            screen.orientation.lock('landscape')
+                                .then(() => console.log("Orientation locked to landscape"))
+                                .catch(err => console.error("Failed to lock orientation:", err));
                         }
                         startGame.call(this);
                     })
                     .catch(err => {
                         console.error("Fullscreen failed:", err);
-                        startGame.call(this); // Старт даже при ошибке fullscreen
+                        startGame.call(this); // Запуск даже при ошибке
                     });
             } else {
                 startGame.call(this);
             }
         }, this);
+    } else {
+        startScreen.add(this.add.text(gameWidth / 2, gameHeight / 2 + 50, 'Press ENTER to Start', {
+            fontFamily: 'MedievalSharp',
+            fontSize: '40px',
+            color: '#ffffff',
+            stroke: '#8b4513',
+            strokeThickness: 3,
+            shadow: { offsetX: 1, offsetY: 1, color: '#000', blur: 3, stroke: true, fill: true }
+        }).setOrigin(0.5));
+        this.input.keyboard.once('keydown-ENTER', () => startGame.call(this), this);
     }
-    this.input.keyboard.once('keydown-ENTER', () => startGame.call(this), this);
 
     this.scale.on('resize', resize, this);
 }
@@ -575,14 +608,13 @@ function spawnEnemy(x, y, type, spawnSide, isArcher = false) {
         enemy.setData('isArcher', isArcher);
         enemy.platformCollider = this.physics.add.collider(enemy, platforms);
 
-        // Добавляем прыжки для грифонов и рыцарей
         if (!isArcher && type !== 'archer') {
-            const jumpDelay = type === 'griffin' ? Phaser.Math.Between(1000, 2000) : Phaser.Math.Between(3000, 5000); // Грифоны чаще
+            const jumpDelay = type === 'griffin' ? Phaser.Math.Between(1000, 2000) : Phaser.Math.Between(3000, 5000);
             enemy.jumpTimer = this.time.addEvent({
                 delay: jumpDelay,
                 callback: () => {
                     if (enemy.active && enemy.body.touching.down && !enemy.getData('hasCoin')) {
-                        const jumpVelocity = type === 'griffin' ? -350 : -250; // Грифоны выше
+                        const jumpVelocity = type === 'griffin' ? -350 : -250;
                         enemy.setVelocityY(jumpVelocity);
                     }
                 },
@@ -708,6 +740,7 @@ function restartGame() {
     waveTimer = null;
     spawnQueueTimer = null;
     virtualCursors = null;
+    window.removeEventListener('resize', checkOrientation); // Очистка слушателя
 }
 
 function updateUI() {
@@ -726,8 +759,11 @@ function resize(gameSize) {
 
     if (!gameStarted) {
         startScreen.getChildren().forEach(child => {
-            if (child.type === 'Text') child.setPosition(gameWidth / 2, child.y === gameHeight / 2 - 50 ? gameHeight / 2 - 50 : gameHeight / 2 + 50);
-            else child.setPosition(gameWidth / 2, gameHeight / 2).setDisplaySize(gameWidth, gameHeight);
+            if (child.type === 'Text') {
+                if (child.text === 'Dragon\'s Hoard') child.setPosition(gameWidth / 2, gameHeight / 2 - 50);
+                else if (child.text.includes('Tap') || child.text.includes('ENTER')) child.setPosition(gameWidth / 2, gameHeight / 2 + 50);
+                else child.setPosition(gameWidth / 2, gameHeight / 2 + 100);
+            }
         });
         return;
     }
@@ -763,3 +799,13 @@ function decreaseTreasureHealth() {
         treasure.setData('health', treasureHealth);
     }
 }
+
+// Объявляем checkOrientation в глобальной области для доступа в restartGame
+function checkOrientation() {
+    if (window.innerHeight > window.innerWidth) {
+        orientationText.setVisible(true);
+    } else {
+        orientationText.setVisible(false);
+    }
+}
+let orientationText; // Глобальная переменная для текста ориентации
