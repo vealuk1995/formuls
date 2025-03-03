@@ -40,8 +40,8 @@ const config = {
     physics: { default: 'arcade', arcade: { gravity: { y: GAME_CONSTANTS.GRAVITY_Y }, debug: false } },
     scene: { preload, create, update },
     input: {
-        touch: true, // Включаем поддержку касаний
-        activePointers: 4 // Максимум 4 одновременных касания
+        touch: true,
+        activePointers: 4
     }
 };
 
@@ -179,40 +179,49 @@ function create() {
     }
 
     startScreen = this.add.group();
-    startScreen.add(this.add.text(gameWidth / 2, gameHeight / 2 + 100, 'Tap to Start Fullscreen', { fontFamily: 'MedievalSharp', fontSize: '60px', color: '#fff' }).setOrigin(0.5));
-    if (isMobileDevice()) {
-        this.input.once('pointerdown', () => {
-            console.log("Start game tap detected");
-            document.documentElement.requestFullscreen().catch(err => console.log("Fullscreen failed:", err));
-            startGame.call(this);
-        }, this);
-    }    startScreen.add(this.add.text(gameWidth / 2, gameHeight / 2 - 50, 'Dragon\'s Hoard', {
+    startScreen.add(this.add.text(gameWidth / 2, gameHeight / 2 - 50, 'Dragon\'s Hoard', {
         fontFamily: 'VinqueRg',
-        fontSize: '180px', // Увеличиваем размер шрифта
+        fontSize: '180px',
         color: '#ffd700',
-        stroke: '#8b4513', // Добавляем коричневую обводку
+        stroke: '#8b4513',
         strokeThickness: 12,
-        shadow: { offsetX: 16, offsetY: 16, color: '#000', blur: 5, stroke: true, fill: true } // Тень для красоты
+        shadow: { offsetX: 16, offsetY: 16, color: '#000', blur: 5, stroke: true, fill: true }
     }).setOrigin(0.5));
     startScreen.add(this.add.text(gameWidth / 2, gameHeight / 2 + 50, 'Press ENTER or Tap to Start', {
         fontFamily: 'MedievalSharp',
-        fontSize: '40px', // Увеличиваем размер шрифта
+        fontSize: '40px',
         color: '#ffffff',
         stroke: '#8b4513',
         strokeThickness: 3,
         shadow: { offsetX: 1, offsetY: 1, color: '#000', blur: 3, stroke: true, fill: true }
     }).setOrigin(0.5));
 
-    this.input.keyboard.once('keydown-ENTER', () => startGame.call(this), this);
+    // Улучшенная обработка старта игры для мобильных устройств и ПК
     if (isMobileDevice()) {
         this.input.once('pointerdown', () => {
             console.log("Start game tap detected");
-            startGame.call(this);
+            if (!document.fullscreenElement) {
+                document.documentElement.requestFullscreen()
+                    .then(() => {
+                        if (screen.orientation && screen.orientation.lock) {
+                            screen.orientation.lock('landscape').catch(err => console.error("Failed to lock orientation:", err));
+                        }
+                        startGame.call(this);
+                    })
+                    .catch(err => {
+                        console.error("Fullscreen failed:", err);
+                        startGame.call(this); // Старт даже при ошибке fullscreen
+                    });
+            } else {
+                startGame.call(this);
+            }
         }, this);
     }
+    this.input.keyboard.once('keydown-ENTER', () => startGame.call(this), this);
 
     this.scale.on('resize', resize, this);
 }
+
 function startGame() {
     if (gameStarted) return;
     gameStarted = true;
@@ -225,40 +234,41 @@ function startGame() {
     treasure = scene.physics.add.staticSprite(gameWidth / 2, gameHeight * GAME_CONSTANTS.TREASURE_Y, 'treasure')
         .setData('health', treasureHealth);
 
-        uiElements = {
-            hpText: scene.add.text(gameWidth / 2 - 70, gameHeight * GAME_CONSTANTS.UI_HP_Y, `Treasure HP: ${treasureHealth}`, {
-                fontFamily: 'MedievalSharp',
-                fontSize: '28px', // Увеличенный размер
-                color: '#ffffff',
-                stroke: '#8b4513', // Коричневая обводка
-                strokeThickness: 2,
-                shadow: { offsetX: 1, offsetY: 1, color: '#000', blur: 2, stroke: true, fill: true }
-            }),
-            scoreText: scene.add.text(gameWidth * GAME_CONSTANTS.UI_SCORE_X, gameHeight * 0.033, 'Score: 0', {
-                fontFamily: 'MedievalSharp',
-                fontSize: '28px',
-                color: '#ffd700', // Золотой цвет
-                stroke: '#8b4513',
-                strokeThickness: 2,
-                shadow: { offsetX: 1, offsetY: 1, color: '#000', blur: 2, stroke: true, fill: true }
-            }),
-            dragonHpText: scene.add.text(gameWidth * GAME_CONSTANTS.UI_DRAGON_HP_X - 70, gameHeight * 0.033, `Dragon HP: ${GAME_CONSTANTS.DRAGON_MAX_HEALTH}`, {
-                fontFamily: 'MedievalSharp',
-                fontSize: '28px',
-                color: '#ffffff',
-                stroke: '#8b4513',
-                strokeThickness: 2,
-                shadow: { offsetX: 1, offsetY: 1, color: '#000', blur: 2, stroke: true, fill: true }
-            }),
-            waveText: scene.add.text(gameWidth / 2, gameHeight * GAME_CONSTANTS.UI_WAVE_Y, '', {
-                fontFamily: 'MedievalSharp',
-                fontSize: '32px', // Чуть больше для волны
-                color: '#ffd700',
-                stroke: '#8b4513',
-                strokeThickness: 3,
-                shadow: { offsetX: 1, offsetY: 1, color: '#000', blur: 3, stroke: true, fill: true }
-            }).setOrigin(0.5)
-        };
+    uiElements = {
+        hpText: scene.add.text(gameWidth / 2 - 70, gameHeight * GAME_CONSTANTS.UI_HP_Y, `Treasure HP: ${treasureHealth}`, {
+            fontFamily: 'MedievalSharp',
+            fontSize: '28px',
+            color: '#ffffff',
+            stroke: '#8b4513',
+            strokeThickness: 2,
+            shadow: { offsetX: 1, offsetY: 1, color: '#000', blur: 2, stroke: true, fill: true }
+        }),
+        scoreText: scene.add.text(gameWidth * GAME_CONSTANTS.UI_SCORE_X, gameHeight * 0.033, 'Score: 0', {
+            fontFamily: 'MedievalSharp',
+            fontSize: '28px',
+            color: '#ffd700',
+            stroke: '#8b4513',
+            strokeThickness: 2,
+            shadow: { offsetX: 1, offsetY: 1, color: '#000', blur: 2, stroke: true, fill: true }
+        }),
+        dragonHpText: scene.add.text(gameWidth * GAME_CONSTANTS.UI_DRAGON_HP_X - 70, gameHeight * 0.033, `Dragon HP: ${GAME_CONSTANTS.DRAGON_MAX_HEALTH}`, {
+            fontFamily: 'MedievalSharp',
+            fontSize: '28px',
+            color: '#ffffff',
+            stroke: '#8b4513',
+            strokeThickness: 2,
+            shadow: { offsetX: 1, offsetY: 1, color: '#000', blur: 2, stroke: true, fill: true }
+        }),
+        waveText: scene.add.text(gameWidth / 2, gameHeight * GAME_CONSTANTS.UI_WAVE_Y, '', {
+            fontFamily: 'MedievalSharp',
+            fontSize: '32px',
+            color: '#ffd700',
+            stroke: '#8b4513',
+            strokeThickness: 3,
+            shadow: { offsetX: 1, offsetY: 1, color: '#000', blur: 3, stroke: true, fill: true }
+        }).setOrigin(0.5)
+    };
+
     fireballs = scene.physics.add.group({ defaultKey: 'fireball', maxSize: GAME_CONSTANTS.MAX_FIREBALLS, gravityY: 0 });
     enemies = scene.physics.add.group({ maxSize: GAME_CONSTANTS.MAX_ENEMIES });
     bonuses = scene.physics.add.group({ maxSize: GAME_CONSTANTS.MAX_BONUSES });
@@ -270,7 +280,6 @@ function startGame() {
     scene.input.keyboard.on('keydown-SPACE', () => dragon.shoot(), scene);
     scene.input.keyboard.on('keydown-R', () => restartGame.call(scene));
 
-    // Инициализация virtualCursors для мобильных устройств
     virtualCursors = { 
         left: { isDown: false }, 
         right: { isDown: false }, 
@@ -301,15 +310,14 @@ function startGame() {
 function update() {
     if (!gameStarted) return;
 
-    // Выбор управления в зависимости от устройства
     if (isMobileDevice() && virtualCursors) {
         dragon.move(virtualCursors);
-        if (virtualCursors.shoot.isDown) { // Стрельба в update
+        if (virtualCursors.shoot.isDown) {
             dragon.shoot();
         }
     } else {
         dragon.move(cursors);
-        if (cursors.space.isDown) { // Для десктопа
+        if (cursors.space.isDown) {
             dragon.shoot();
         }
     }
@@ -351,6 +359,7 @@ function update() {
             enemy.setVelocityX(directionX > 0 ? GAME_CONSTANTS.ENEMY_SPEED : -GAME_CONSTANTS.ENEMY_SPEED)
                 .setScale(directionX > 0 ? 1 : -1, 1);
             enemy.body.setOffset(directionX < 0 ? 48 : 0, 0);
+            enemy.anims.play(enemy.texture.key + '_walk', true);
         }
         if (enemy.debugRect) enemy.debugRect.setPosition(enemy.body.x + 24, enemy.body.y + 24);
     });
@@ -565,6 +574,23 @@ function spawnEnemy(x, y, type, spawnSide, isArcher = false) {
         enemy.setData('spawnSide', spawnSide);
         enemy.setData('isArcher', isArcher);
         enemy.platformCollider = this.physics.add.collider(enemy, platforms);
+
+        // Добавляем прыжки для грифонов и рыцарей
+        if (!isArcher && type !== 'archer') {
+            const jumpDelay = type === 'griffin' ? Phaser.Math.Between(1000, 2000) : Phaser.Math.Between(3000, 5000); // Грифоны чаще
+            enemy.jumpTimer = this.time.addEvent({
+                delay: jumpDelay,
+                callback: () => {
+                    if (enemy.active && enemy.body.touching.down && !enemy.getData('hasCoin')) {
+                        const jumpVelocity = type === 'griffin' ? -350 : -250; // Грифоны выше
+                        enemy.setVelocityY(jumpVelocity);
+                    }
+                },
+                callbackScope: this,
+                loop: true
+            });
+        }
+
         if (this.physics.config.debug) {
             enemy.debugRect = this.add.rectangle(x, y, 48, 48, 0xff0000, 0.5).setDepth(1000);
             debugRects.push(enemy.debugRect);
@@ -650,20 +676,20 @@ function gameOver(message) {
     if (treasureDamageTimer) treasureDamageTimer.remove();
     enemies.getChildren().forEach(enemy => {
         if (enemy.shootTimer) enemy.shootTimer.remove();
+        if (enemy.jumpTimer) enemy.jumpTimer.remove();
     });
     gameOverRect = this.add.rectangle(gameWidth / 2, gameHeight / 2, gameWidth, gameHeight, 0x000000, 0.7).setDepth(1000);
-    gameOverText = this.add.text(gameWidth / 2, gameHeight / 2, // Центрируем по горизонтали и вертикали
+    gameOverText = this.add.text(gameWidth / 2, gameHeight / 2,
         `${message}\nWave: ${waveNumber}\nScore: ${score}\nTap to Restart (or press R)`,
         {
             fontFamily: 'MedievalSharp',
-            fontSize: '60px', // Увеличенный размер
-            color: '#ff0000', // Красный цвет
-            align: 'center', // Центрирование текста
-            stroke: '#ffd700', // Золотая обводка
+            fontSize: '60px',
+            color: '#ff0000',
+            align: 'center',
+            stroke: '#ffd700',
             strokeThickness: 6,
-            shadow: { offsetX: 3, offsetY: 3, color: '#000', blur: 5, stroke: true, fill: true } // Тень для эффекта
-        }).setOrigin(0.5) // Устанавливаем центр текста как точку отсчёта
-        .setDepth(1001);
+            shadow: { offsetX: 3, offsetY: 3, color: '#000', blur: 5, stroke: true, fill: true }
+        }).setOrigin(0.5).setDepth(1001);
 }
 
 function restartGame() {
@@ -681,7 +707,7 @@ function restartGame() {
     enemiesToSpawn = [];
     waveTimer = null;
     spawnQueueTimer = null;
-    virtualCursors = null; // Сбрасываем virtualCursors при рестарте
+    virtualCursors = null;
 }
 
 function updateUI() {
