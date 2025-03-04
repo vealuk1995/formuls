@@ -1,3 +1,4 @@
+// game.js
 const GAME_CONSTANTS = {
     DRAGON_SPEED: 160,
     DRAGON_JUMP: -450,
@@ -7,7 +8,7 @@ const GAME_CONSTANTS = {
     ENEMY_SPEED: 100,
     TILE_SIZE: 32,
     GRAVITY_Y: 500,
-    MAX_ENEMIES: 15,
+    MAX_ENEMIES: 30,
     MAX_FIREBALLS: 50,
     MAX_BONUSES: 10,
     MAX_ARROWS: 20,
@@ -17,7 +18,6 @@ const GAME_CONSTANTS = {
     UI_SCORE_X: 0.025,
     UI_WAVE_Y: 0.066,
     UI_DRAGON_HP_X: 0.9,
-    BUTTON_SIZE_FACTOR: 0.1,
     ENEMY_SPAWN_DELAY: 2000,
     ASPECT_RATIO: 16 / 9,
     BONUS_HP_RESTORE: 10,
@@ -39,20 +39,22 @@ const config = {
     height: 720,
     scale: { mode: Phaser.Scale.FIT, autoCenter: Phaser.Scale.CENTER_BOTH },
     physics: { default: 'arcade', arcade: { gravity: { y: GAME_CONSTANTS.GRAVITY_Y }, debug: false } },
-    scene: { preload, create, update },
-    input: {
-        touch: true,
-        activePointers: 4
-    }
+    scene: { preload, create, update }
 };
 
 const game = new Phaser.Game(config);
 
-let dragon, treasure, platforms, enemies, fireballs, bonuses, arrows, cursors, virtualCursors;
+let dragon, treasure, platforms, enemies, fireballs, bonuses, arrows, cursors;
 let score = 0, treasureHealth = GAME_CONSTANTS.INITIAL_TREASURE_HP;
 let gameWidth, gameHeight, uiElements, gameOverText, gameOverRect, debugRects = [];
 let treasureDamageTimer, waveNumber = 0, waveText, waveTimer, startScreen;
 let gameStarted = false, enemiesToSpawn = [], spawnQueueTimer;
+let isMusicEnabled = true;  // Фоновая музыка включена по умолчанию
+let isSoundEnabled = true;  // Звуковые эффекты включены по умолчанию
+
+function isMobileDevice() {
+    return /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent) || window.innerWidth <= 768;
+}
 
 class Dragon {
     constructor(scene, x, y, fireballs) {
@@ -70,7 +72,7 @@ class Dragon {
             this.debugRect = scene.add.rectangle(x, y, 64, 64, 0x800080, 0.5).setDepth(1000);
             debugRects.push(this.debugRect);
         }
-        this.shootInterval = null; // Добавляем переменную для таймера
+        this.shootInterval = null;
     }
     shoot() {
         if (!this.fireballs || this.fireballs.countActive(true) >= GAME_CONSTANTS.MAX_FIREBALLS) return;
@@ -85,36 +87,35 @@ class Dragon {
                     .setScale(this.lastDirection, 1)
                     .anims.play('fireball_fly', true);
                 fireball.body.setOffset(this.lastDirection === -1 ? 36 : 0, 0);
-                // Удаляем коллизию с платформами (см. пункт 2 ниже)
-                this.scene.sound.play('fireball_sound');            }
+                if (isSoundEnabled) this.scene.sound.play('fireball_sound'); // Учитываем состояние звука
+            }
         };
 
-        // Если таймер уже существует, не создаем новый выстрел
         if (!this.shootInterval) {
-            fireSingleShot(); // Первый выстрел сразу
+            fireSingleShot();
             this.shootInterval = this.scene.time.addEvent({
-                delay: 200, // Интервал между выстрелами (в миллисекундах)
+                delay: 200,
                 callback: fireSingleShot,
                 callbackScope: this,
                 loop: true
             });
         }
     }
-
     stopShooting() {
         if (this.shootInterval) {
             this.shootInterval.remove();
             this.shootInterval = null;
         }
     }
-
     move(cursors) {
-        if (cursors.left.isDown) {
+        const virtualControls = this.scene.virtualControls || { left: false, right: false };
+    
+        if (cursors.left.isDown || virtualControls.left) {
             this.sprite.setVelocityX(-GAME_CONSTANTS.DRAGON_SPEED);
             this.lastDirection = -1;
             this.sprite.setScale(-1, 1).anims.play('dragon_walk', true);
             this.sprite.body.setOffset(64, 0);
-        } else if (cursors.right.isDown) {
+        } else if (cursors.right.isDown || virtualControls.right) {
             this.sprite.setVelocityX(GAME_CONSTANTS.DRAGON_SPEED);
             this.lastDirection = 1;
             this.sprite.setScale(1, 1).anims.play('dragon_walk', true);
@@ -122,28 +123,16 @@ class Dragon {
         } else {
             this.sprite.setVelocityX(0).anims.play('dragon_idle', true);
         }
-
+    
+        // Прыжок остался на клавиатуре или через виртуальную кнопку
         if (cursors.up.isDown && this.sprite.body.touching.down) {
             this.sprite.setVelocityY(GAME_CONSTANTS.DRAGON_JUMP);
+            if (isSoundEnabled) this.scene.sound.play('jump_sound');
         }
-
+    
         if (this.debugRect) this.debugRect.setPosition(this.sprite.body.x + 32, this.sprite.body.y + 32);
     }
 
-    shoot() {
-        if (!this.fireballs || this.fireballs.countActive(true) >= GAME_CONSTANTS.MAX_FIREBALLS) return;
-        let fireball = this.fireballs.get(this.sprite.x, this.sprite.y);
-        if (fireball) {
-            fireball.setActive(true).setVisible(true)
-                .body.allowGravity = false;
-            fireball.body.setSize(36, 24);
-            fireball.setVelocityX(this.lastDirection * GAME_CONSTANTS.FIREBALL_SPEED)
-                .setScale(this.lastDirection, 1)
-                .anims.play('fireball_fly', true);
-            fireball.body.setOffset(this.lastDirection === -1 ? 36 : 0, 0);
-            if (this.scene.sound.get('fireball_sound')) this.scene.sound.get('fireball_sound').play();
-        }
-    }
 
     takeDamage() {
         if (!this.sprite.getData('invulnerable')) {
@@ -151,6 +140,7 @@ class Dragon {
             this.sprite.setData('health', health)
                 .setData('invulnerable', true)
                 .setTint(0xff0000);
+                if (isSoundEnabled) this.scene.sound.play('damage_sound'); // Учитываем состояние звука
             this.scene.time.delayedCall(1000, () => {
                 this.sprite.clearTint().setData('invulnerable', false);
             });
@@ -158,18 +148,61 @@ class Dragon {
         }
         return false;
     }
-
     destroy() {
         this.sprite.destroy();
         if (this.debugRect) this.debugRect.destroy();
     }
 }
 
-function isMobileDevice() {
-    return /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent) ||
-           (window.matchMedia && window.matchMedia("(max-width: 767px)").matches);
-}
+class VirtualButton {
+    constructor(scene, x, y, key, callback, scale = 1, tintPressed = 0xaaaaaa, isToggle = false) {
+        this.scene = scene;
+        this.callback = callback;
+        this.isPressed = false;
+        this.isToggle = isToggle;
 
+        this.button = scene.add.image(x, y, key)
+            .setScale(scale)
+            .setInteractive()
+            .setDepth(1000);
+
+        if (this.isToggle) {
+            this.button.on('pointerup', () => {
+                this.callback();
+            });
+        } else {
+            this.button.on('pointerdown', () => {
+                this.isPressed = true;
+                this.button.setTint(tintPressed);
+                callback(true);
+            });
+            this.button.on('pointerup', () => {
+                this.isPressed = false;
+                this.button.clearTint();
+                callback(false);
+            });
+            this.button.on('pointerout', () => {
+                if (this.isPressed) {
+                    this.isPressed = false;
+                    this.button.clearTint();
+                    callback(false);
+                }
+            });
+        }
+    }
+
+    setVisible(visible) {
+        this.button.setVisible(visible);
+    }
+
+    setTexture(texture) {
+        this.button.setTexture(texture);
+    }
+
+    destroy() {
+        this.button.destroy();
+    }
+}
 function preload() {
     console.log('Starting preload...');
     this.load.on('progress', value => console.log(`Loading progress: ${Math.round(value * 100)}%`));
@@ -188,22 +221,29 @@ function preload() {
     this.load.image('crystal_bonus', 'assets/sprites/crystal_bonus_cartoon.png');
     this.load.image('coin', 'assets/sprites/coin.png');
     this.load.image('cave_bg', 'assets/backgrounds/cave_bg_cartoon.png');
-    this.load.audio('fireball_sound', 'assets/sounds/fireball.mp3');
-    this.load.audio('coin_steal', 'assets/sounds/coin_steal.mp3');
-    this.load.audio('bonus_collect', 'assets/sounds/bonus.mp3');
-    this.load.audio('arrow_shot', 'assets/sounds/arrow_shot.mp3');
+    this.load.audio('fireball_sound', 'assets/sounds/fireball.wav');
+    this.load.audio('coin_steal', 'assets/sounds/coin_steal.wav');
+    this.load.audio('bonus_collect', 'assets/sounds/bonus.wav');
+    this.load.audio('arrow_shot', 'assets/sounds/arrow_shot.wav');
+    this.load.audio('jump_sound', 'assets/sounds/jump.wav');
+    this.load.audio('damage_sound', 'assets/sounds/damage.wav');
+    this.load.audio('wave_start', 'assets/sounds/wave_start.wav');
+    this.load.audio('enemy_death', 'assets/sounds/enemy_death.wav');
+    this.load.audio('background_music', 'assets/sounds/background_music.mp3');
+    this.load.image('left_button', 'assets/sprites/left.png');
+    this.load.image('right_button', 'assets/sprites/right.png');
+    this.load.image('jump_button', 'assets/sprites/jump.png');
+    this.load.image('fire_button', 'assets/sprites/fire.png');
+    this.load.image('music_on', 'assets/sprites/music_on.png');
+    this.load.image('music_off', 'assets/sprites/music_off.png');
+    this.load.image('sound_on', 'assets/sprites/sound_on.png');
+    this.load.image('sound_off', 'assets/sprites/sound_off.png');
 }
 
 function create() {
     console.log('Starting create...');
     gameWidth = this.scale.width;
     gameHeight = this.scale.height;
-
-    if (!this.plugins.get('rexVirtualJoystick')) {
-        console.warn('rexVirtualJoystick plugin not found');
-    } else {
-        console.log('rexVirtualJoystick plugin loaded successfully');
-    }
 
     if (!this.anims.exists('dragon_idle')) {
         this.anims.create({ key: 'dragon_idle', frames: this.anims.generateFrameNumbers('dragon', { start: 0, end: 0 }), frameRate: 1, repeat: -1 });
@@ -214,11 +254,15 @@ function create() {
         this.anims.create({ key: 'fireball_fly', frames: this.anims.generateFrameNumbers('fireball', { start: 0, end: 2 }), frameRate: 15, repeat: -1 });
     }
 
-    // Инициализация звуков
     this.sound.add('fireball_sound', { volume: 0.5 });
     this.sound.add('coin_steal', { volume: 0.5 });
     this.sound.add('bonus_collect', { volume: 0.5 });
     this.sound.add('arrow_shot', { volume: 0.5 });
+    this.sound.add('jump_sound', { volume: 0.5 });
+    this.sound.add('damage_sound', { volume: 0.5 });
+    this.sound.add('wave_start', { volume: 0.5 });
+    this.sound.add('damage_sound', { volume: 0.5 });
+    this.backgroundMusic = this.sound.add('background_music', { volume: 0.3, loop: true });
 
     startScreen = this.add.group();
     startScreen.add(this.add.text(gameWidth / 2, gameHeight / 2 - 50, 'Dragon\'s Hoard', {
@@ -230,114 +274,106 @@ function create() {
         shadow: { offsetX: 16, offsetY: 16, color: '#000', blur: 5, stroke: true, fill: true }
     }).setOrigin(0.5));
 
-    let orientationText;
-    const checkOrientation = () => {
-        if (window.innerHeight > window.innerWidth) {
-            orientationText.setVisible(true);
-        } else {
-            orientationText.setVisible(false);
-        }
-    };
+const startText = this.add.text(gameWidth / 2, gameHeight / 2 + 50,
+        isMobileDevice() ? 'Click to start' : 'Press ENTER to Start',
+        {
+            fontFamily: 'MedievalSharp',
+            fontSize: '40px',
+            color: '#ffffff',
+            stroke: '#8b4513',
+            strokeThickness: 3,
+            shadow: { offsetX: 1, offsetY: 1, color: '#000', blur: 3, stroke: true, fill: true }
+        }).setOrigin(0.5).setInteractive();
+    startScreen.add(startText);
+
+
+    const musicToggle = this.add.text(gameWidth / 2, gameHeight / 2 + 100, `Music: ${isMusicEnabled ? 'ON' : 'OFF'} (Press M)`, {
+        fontFamily: 'MedievalSharp',
+        fontSize: '30px',
+        color: '#ffffff',
+        stroke: '#8b4513',
+        strokeThickness: 2
+    }).setOrigin(0.5).setInteractive();
+    startScreen.add(musicToggle);
+
+    const soundToggle = this.add.text(gameWidth / 2, gameHeight / 2 + 140, `Sound: ${isSoundEnabled ? 'ON' : 'OFF'} (Press S)`, {
+        fontFamily: 'MedievalSharp',
+        fontSize: '30px',
+        color: '#ffffff',
+        stroke: '#8b4513',
+        strokeThickness: 2
+    }).setOrigin(0.5).setInteractive();
+    startScreen.add(soundToggle);
 
     if (isMobileDevice()) {
-        // Текст для первого тапа
-        const tapToFullscreenText = this.add.text(gameWidth / 2, gameHeight / 2 + 50, 'Tap to Enable Fullscreen', {
-            fontFamily: 'MedievalSharp',
-            fontSize: '40px',
-            color: '#ffffff',
-            stroke: '#8b4513',
-            strokeThickness: 3,
-            shadow: { offsetX: 1, offsetY: 1, color: '#000', blur: 3, stroke: true, fill: true }
-        }).setOrigin(0.5);
-        startScreen.add(tapToFullscreenText);
 
-        orientationText = this.add.text(gameWidth / 2, gameHeight / 2 + 100, 'Please rotate to landscape', {
-            fontFamily: 'MedievalSharp',
-            fontSize: '30px',
-            color: '#ff0000',
-            stroke: '#ffd700',
-            strokeThickness: 2
-        }).setOrigin(0.5).setVisible(false);
-        startScreen.add(orientationText);
-
-        window.addEventListener('resize', checkOrientation);
-        checkOrientation();
-
-        let hasTapped = false;
-
-        // Первый тап: синхронный вызов полноэкранного режима и разблокировка звука
-        this.input.once('pointerdown', () => {
-            console.log('First tap detected, requesting fullscreen...');
-            hasTapped = true;
-
-            // Разблокируем AudioContext
-            if (this.sound.context.state === 'suspended') {
-                this.sound.context.resume().then(() => console.log('AudioContext resumed'));
+        startText.on('pointerup', () => {
+            if (!gameStarted) {
+                startGame.call(this);
             }
+        });
 
-            // Синхронный вызов requestFullscreen
-            if (!document.fullscreenElement) {
-                document.documentElement.requestFullscreen();
-            }
+        // Обработка тапов для переключения музыки и звука
+        musicToggle.on('pointerup', () => {
+            toggleMusic(this);
+            musicToggle.setText(`Music: ${isMusicEnabled ? 'ON' : 'OFF'}`);
+        });
+        soundToggle.on('pointerup', () => {
+            isSoundEnabled = !isSoundEnabled;
+            soundToggle.setText(`Sound: ${isSoundEnabled ? 'ON' : 'OFF'}`);
+        });
 
-            // Попытка блокировки ориентации (если поддерживается)
-            if (screen.orientation && screen.orientation.lock) {
-                screen.orientation.lock('landscape')
-                    .catch(err => {
-                        console.error('Failed to lock orientation:', err);
-                        orientationText.setText('Rotate device manually');
-                        orientationText.setVisible(true);
-                    });
-            }
+        // Общий тап по экрану для старта игры, только если не на кнопках
+        this.input.once('pointerup', (pointer) => {
+            if (!gameStarted) {
+                const musicBounds = musicToggle.getBounds();
+                const soundBounds = soundToggle.getBounds();
+                const x = pointer.x;
+                const y = pointer.y;
 
-            // Обновляем интерфейс для второго тапа
-            tapToFullscreenText.destroy();
-            startScreen.add(this.add.text(gameWidth / 2, gameHeight / 2 + 50, 'Tap to Start Game', {
-                fontFamily: 'MedievalSharp',
-                fontSize: '40px',
-                color: '#ffffff',
-                stroke: '#8b4513',
-                strokeThickness: 3,
-                shadow: { offsetX: 1, offsetY: 1, color: '#000', blur: 3, stroke: true, fill: true }
-            }).setOrigin(0.5));
-        }, this);
-
-        // Второй тап: проверка и запуск игры
-        this.input.on('pointerdown', () => {
-            if (hasTapped && startScreen.getChildren().some(child => child.text === 'Tap to Start Game')) {
-                console.log('Second tap detected, checking conditions...');
-                if (document.fullscreenElement && checkOrientationBeforeStart(this)) {
-                    startScreen.clear(true, true);
+                // Проверяем, что тап НЕ попал в границы musicToggle или soundToggle
+                if (!(x >= musicBounds.x && x <= musicBounds.x + musicBounds.width &&
+                      y >= musicBounds.y && y <= musicBounds.y + musicBounds.height) &&
+                    !(x >= soundBounds.x && x <= soundBounds.x + soundBounds.width &&
+                      y >= soundBounds.y && y <= soundBounds.y + soundBounds.height)) {
                     startGame.call(this);
-                    this.input.off('pointerdown'); // Удаляем обработчик после запуска
-                } else {
-                    if (!document.fullscreenElement) {
-                        orientationText.setText('Fullscreen not active, tap again');
-                        orientationText.setVisible(true);
-                        document.documentElement.requestFullscreen(); // Повторный запрос
-                    } else {
-                        orientationText.setText('Rotate to landscape and tap again');
-                        orientationText.setVisible(true);
-                    }
                 }
             }
-        }, this);
+        });
     } else {
-        startScreen.add(this.add.text(gameWidth / 2, gameHeight / 2 + 50, 'Press ENTER to Start', {
-            fontFamily: 'MedievalSharp',
-            fontSize: '40px',
-            color: '#ffffff',
-            stroke: '#8b4513',
-            strokeThickness: 3,
-            shadow: { offsetX: 1, offsetY: 1, color: '#000', blur: 3, stroke: true, fill: true }
-        }).setOrigin(0.5));
-        this.input.keyboard.once('keydown-ENTER', () => startGame.call(this), this);
-    }
+     musicToggle.on('pointerdown', () => {
+        isMusicEnabled = !isMusicEnabled;
+        musicToggle.setText(`Music: ${isMusicEnabled ? 'ON' : 'OFF'} (Press M)`);
+    });
 
+    soundToggle.on('pointerdown', () => {
+        isSoundEnabled = !isSoundEnabled;
+        soundToggle.setText(`Sound: ${isSoundEnabled ? 'ON' : 'OFF'} (Press S)`);
+    });
+
+    // Обработка клавиш
+    this.input.keyboard.on('keydown-M', () => {
+        toggleMusic(this); // Вызываем toggleMusic с текущей сценой
+        musicToggle.setText(`Music: ${isMusicEnabled ? 'ON' : 'OFF'} (Press M)`);
+    });
+
+    this.input.keyboard.on('keydown-S', () => {
+        isSoundEnabled = !isSoundEnabled;
+        soundToggle.setText(`Sound: ${isSoundEnabled ? 'ON' : 'OFF'} (Press S)`);
+    });
+    }
+    this.input.keyboard.once('keydown-ENTER', () => startGame.call(this), this);
     this.scale.on('resize', resize, this);
-    this.sound.unlock();
 }
 
+function toggleMusic(scene) {
+    isMusicEnabled = !isMusicEnabled;
+    if (isMusicEnabled && gameStarted) {
+        scene.backgroundMusic.play();
+    } else if (!isMusicEnabled && gameStarted) {
+        scene.backgroundMusic.stop();
+    }
+}
 
 function startGame() {
     if (gameStarted) return;
@@ -346,15 +382,18 @@ function startGame() {
 
     let scene = this;
 
-    // Активируем полноэкранный режим для мобильных устройств
-    if (isMobileDevice()) {
-        scene.sound.unlock();
-    }
-
     scene.add.image(gameWidth / 2, gameHeight / 2, 'cave_bg').setDisplaySize(gameWidth, gameHeight);
     platforms = createPlatforms(scene, gameWidth, gameHeight);
     treasure = scene.physics.add.staticSprite(gameWidth / 2, gameHeight * GAME_CONSTANTS.TREASURE_Y, 'treasure')
         .setData('health', treasureHealth);
+
+        fireballs = scene.physics.add.group({ defaultKey: 'fireball', maxSize: GAME_CONSTANTS.MAX_FIREBALLS, gravityY: 0 });
+        enemies = scene.physics.add.group({ maxSize: GAME_CONSTANTS.MAX_ENEMIES });
+        bonuses = scene.physics.add.group({ maxSize: GAME_CONSTANTS.MAX_BONUSES });
+        arrows = scene.physics.add.group({ defaultKey: 'arrow', maxSize: GAME_CONSTANTS.MAX_ARROWS, gravityY: 0 });
+        dragon = new Dragon(scene, gameWidth / 2, gameHeight * GAME_CONSTANTS.DRAGON_START_Y, fireballs);
+    
+
     uiElements = {
         hpText: scene.add.text(gameWidth / 2 - 70, gameHeight * GAME_CONSTANTS.UI_HP_Y, `Treasure HP: ${treasureHealth}`, {
             fontFamily: 'MedievalSharp',
@@ -390,23 +429,86 @@ function startGame() {
         }).setOrigin(0.5)
     };
 
-    fireballs = scene.physics.add.group({ defaultKey: 'fireball', maxSize: GAME_CONSTANTS.MAX_FIREBALLS, gravityY: 0 });
-    enemies = scene.physics.add.group({ maxSize: GAME_CONSTANTS.MAX_ENEMIES });
-    bonuses = scene.physics.add.group({ maxSize: GAME_CONSTANTS.MAX_BONUSES });
-    arrows = scene.physics.add.group({ defaultKey: 'arrow', maxSize: GAME_CONSTANTS.MAX_ARROWS, gravityY: 0 });
 
-    dragon = new Dragon(scene, gameWidth / 2, gameHeight * GAME_CONSTANTS.DRAGON_START_Y, fireballs);
+    this.virtualButtons = {};
+
+    if (isMobileDevice()) {
+        const buttonSize = gameWidth * 0.1; // Размер кнопки — 10% ширины экрана
+        const padding = buttonSize * 0.2; // Отступ между кнопками
+
+        // Кнопки движения (слева снизу)
+        this.virtualButtons.left = new VirtualButton(
+            this,
+            buttonSize * 0.5 + padding,
+            gameHeight - buttonSize * 0.5 - padding,
+            'left_button',
+            (pressed) => this.virtualControls.left = pressed
+        );
+        this.virtualButtons.right = new VirtualButton(
+            this,
+            buttonSize * 1.5 + padding * 2,
+            gameHeight - buttonSize * 0.5 - padding,
+            'right_button',
+            (pressed) => this.virtualControls.right = pressed
+        );
+
+        // Кнопки прыжка и стрельбы (справа снизу)
+        this.virtualButtons.jump = new VirtualButton(
+            this,
+            gameWidth - buttonSize * 1.5 - padding * 2,
+            gameHeight - buttonSize * 0.5 - padding,
+            'jump_button',
+            (pressed) => {
+                if (pressed && dragon.sprite.body.touching.down) {
+                    dragon.sprite.setVelocityY(GAME_CONSTANTS.DRAGON_JUMP);
+                    if (isSoundEnabled) this.sound.play('jump_sound');
+                }
+            }
+        );
+        this.virtualButtons.fire = new VirtualButton(
+            this,
+            gameWidth - buttonSize * 0.5 - padding,
+            gameHeight - buttonSize * 0.5 - padding,
+            'fire_button',
+            (pressed) => this.virtualControls.fire = pressed
+        );
+
+        // Кнопки управления звуком (вверху справа)
+        this.virtualButtons.music = new VirtualButton(
+            this,
+            gameWidth - buttonSize * 0.5 - padding,
+            buttonSize * 0.5 + padding,
+            isMusicEnabled ? 'music_on' : 'music_off',
+            () => {
+                toggleMusic(this);
+                this.virtualButtons.music.setTexture(isMusicEnabled ? 'music_on' : 'music_off');
+            },
+            buttonSize / 100, // Масштаб кнопки
+            0xaaaaaa,
+            true // Режим переключения
+        );
+        this.virtualButtons.sound = new VirtualButton(
+            this,
+            gameWidth - buttonSize * 1.5 - padding * 2,
+            buttonSize * 0.5 + padding,
+            isSoundEnabled ? 'sound_on' : 'sound_off',
+            () => {
+                isSoundEnabled = !isSoundEnabled;
+                this.virtualButtons.sound.setTexture(isSoundEnabled ? 'sound_on' : 'sound_off');
+            },
+            buttonSize / 100,
+            0xaaaaaa,
+            true // Режим переключения
+        );
+
+        // Объект для хранения состояния виртуальных кнопок
+        this.virtualControls = { left: false, right: false, fire: false };
+    }
+
 
     cursors = scene.input.keyboard.createCursorKeys();
     scene.input.keyboard.on('keydown-SPACE', () => dragon.shoot(), scene);
     scene.input.keyboard.on('keydown-R', () => restartGame.call(scene));
-
-    virtualCursors = { 
-        left: { isDown: false }, 
-        right: { isDown: false }, 
-        up: { isDown: false },
-        shoot: { isDown: false }
-    };
 
     scene.physics.add.collider(enemies, platforms);
     scene.physics.add.overlap(enemies, treasure, stealCoin, null, scene);
@@ -423,39 +525,20 @@ function startGame() {
         loop: true
     });
 
+    if (isMusicEnabled) scene.backgroundMusic.play();
+
     startNextWave.call(scene);
-    if (typeof window.initMobileControls === 'function') window.initMobileControls(scene);
     console.log('Game started.');
 }
 
 function update() {
-    if (!gameStarted) return;
+    if (!gameStarted || !dragon) return; // Проверка на старт игры и существование dragon
 
-    if (isMobileDevice() && virtualCursors) {
-        dragon.move(virtualCursors);
-        if (virtualCursors.shoot.isDown) {
-            dragon.shoot();
-        } else {
-            dragon.stopShooting();
-        }
+    dragon.move(cursors);
+    if (cursors.space.isDown || (this.virtualControls && this.virtualControls.fire)) {
+        dragon.shoot();
     } else {
-        dragon.move(cursors);
-        if (cursors.space.isDown) {
-            dragon.shoot();
-        } else {
-            dragon.stopShooting();
-        }
-    }
-    if (isMobileDevice() && virtualCursors) {
-        dragon.move(virtualCursors);
-        if (virtualCursors.shoot.isDown) {
-            dragon.shoot();
-        }
-    } else {
-        dragon.move(cursors);
-        if (cursors.space.isDown) {
-            dragon.shoot();
-        }
+        dragon.stopShooting();
     }
 
     enemies.getChildren().forEach(enemy => {
@@ -606,6 +689,7 @@ function startNextWave() {
     waveTimer = this.time.delayedCall(GAME_CONSTANTS.WAVE_PREPARATION_TIME, () => {
         console.log(`Starting wave ${waveNumber}`);
         uiElements.waveText.setText(`Wave ${waveNumber}`);
+        if (isSoundEnabled) this.sound.play('wave_start'); // Учитываем состояние звука
         spawnWave.call(this);
         waveTimer = null;
     }, [], this);
@@ -617,7 +701,7 @@ function spawnWave() {
         return;
     }
 
-    let enemyCount = Math.min(waveNumber + 1, 10);
+    let enemyCount = Math.min(waveNumber + 1, 30);
     enemiesToSpawn = [];
     let platformHeights = [gameHeight * 0.5 - 100, gameHeight * 0.75 - 100, gameHeight - 100];
     let spawnPositions = [];
@@ -633,8 +717,7 @@ function spawnWave() {
             x = Math.random() < 0.5 ? gameWidth * 0.0625 + Phaser.Math.Between(-50, 50) : gameWidth * 0.9375 + Phaser.Math.Between(-50, 50);
             spawnSide = x < gameWidth / 2 ? 'left' : 'right';
             attempts++;
-            if (attempts > 20) break; // Увеличим количество попыток до 20
-            // Проверяем расстояние до дракона
+            if (attempts > 20) break;
         } while (
             spawnPositions.some(pos => Phaser.Math.Distance.Between(x, y, pos.x, pos.y) < GAME_CONSTANTS.MIN_ENEMY_SPACING) ||
             Phaser.Math.Distance.Between(x, y, dragon.sprite.x, dragon.sprite.y) < GAME_CONSTANTS.MIN_DRAGON_ENEMY_DISTANCE
@@ -648,7 +731,6 @@ function spawnWave() {
         }
     }
 
-    // Спавн лучников (также с проверкой расстояния до дракона)
     if (waveNumber >= 3) {
         let archerX = gameWidth * 0.5;
         if (
@@ -773,8 +855,8 @@ function shootArrow(enemy) {
         const velocityY = Math.sin(angle) * GAME_CONSTANTS.ARCHER_ARROW_SPEED;
         arrow.setVelocity(velocityX, velocityY)
             .setRotation(angle);
-            this.sound.play('arrow_shot');
-            }
+        if (isSoundEnabled) this.sound.play('arrow_shot');
+    }
 }
 
 function arrowHitDragon(dragonSprite, arrow) {
@@ -786,7 +868,7 @@ function stealCoin(enemy, treasure) {
     if (!enemy.active || enemy.getData('hasCoin') || enemy.getData('isArcher')) return;
     enemy.setData('hasCoin', true);
     enemy.coinSprite = this.add.image(enemy.x, enemy.y - 20, 'coin').setScale(0.5);
-    this.sound.play('coin_steal'); // Используем play вместо get
+    if (isSoundEnabled) this.sound.play('coin_steal');
 }
 
 function hitEnemy(fireball, enemy) {
@@ -802,6 +884,7 @@ function hitEnemy(fireball, enemy) {
     }
     if (enemy.coinSprite) enemy.coinSprite.destroy();
     if (enemy.debugRect) enemy.debugRect.destroy();
+    if (isSoundEnabled) this.sound.play('enemy_death'); // Звук смерти врага
     enemy.destroy();
     score += 10;
     if (Math.random() < 0.2) spawnBonus(enemy.x, enemy.y);
@@ -824,7 +907,7 @@ function collectBonus(dragonSprite, bonus) {
     let dragonHealth = Math.min(GAME_CONSTANTS.DRAGON_MAX_HEALTH, dragon.sprite.getData('health') + GAME_CONSTANTS.BONUS_LIFE_RESTORE);
     dragon.sprite.setData('health', dragonHealth);
     bonus.destroy();
-    this.sound.play('bonus_collect');
+    if (isSoundEnabled) this.sound.play('bonus_collect');
 }
 
 function dragonDeath(dragonSprite, enemy) {
@@ -839,9 +922,13 @@ function gameOver(message) {
         if (enemy.shootTimer) enemy.shootTimer.remove();
         if (enemy.jumpTimer) enemy.jumpTimer.remove();
     });
+
+    if (isMusicEnabled) this.backgroundMusic.stop(); // Останавливаем музыку только если она включена
+
+
     gameOverRect = this.add.rectangle(gameWidth / 2, gameHeight / 2, gameWidth, gameHeight, 0x000000, 0.7).setDepth(1000);
     gameOverText = this.add.text(gameWidth / 2, gameHeight / 2,
-        `${message}\nWave: ${waveNumber}\nScore: ${score}\nTap to Restart (or press R)`,
+        `${message}\nWave: ${waveNumber}\nScore: ${score}\nPress R to Restart`,
         {
             fontFamily: 'MedievalSharp',
             fontSize: '60px',
@@ -851,6 +938,13 @@ function gameOver(message) {
             strokeThickness: 6,
             shadow: { offsetX: 3, offsetY: 3, color: '#000', blur: 5, stroke: true, fill: true }
         }).setOrigin(0.5).setDepth(1001);
+
+        if (isMobileDevice()) {
+            this.input.once('pointerup', () => {
+                restartGame.call(this);
+            });
+        }
+
 }
 
 function restartGame() {
@@ -868,20 +962,23 @@ function restartGame() {
     enemiesToSpawn = [];
     waveTimer = null;
     spawnQueueTimer = null;
-    virtualCursors = null;
 
-    // Очищаем платформы явно
     if (platforms) {
         platforms.clear(true, true);
         platforms = null;
     }
 
-    if (isMobileDevice()) {
-        window.removeEventListener('resize', checkOrientation);
+    if (this.virtualButtons) {
+        Object.values(this.virtualButtons).forEach(button => button.destroy());
+        this.virtualButtons = null;
     }
+
+    this.backgroundMusic.stop();
+    this.scene.get(this.scene.key).create();
 
     this.scene.get(this.scene.key).create();
 }
+
 function updateUI() {
     uiElements.hpText.setText(`Treasure HP: ${treasure.getData('health')}`);
     uiElements.scoreText.setText(`Score: ${score}`);
@@ -900,14 +997,12 @@ function resize(gameSize) {
         startScreen.getChildren().forEach(child => {
             if (child.type === 'Text') {
                 if (child.text === 'Dragon\'s Hoard') child.setPosition(gameWidth / 2, gameHeight / 2 - 50);
-                else if (child.text.includes('Tap') || child.text.includes('ENTER')) child.setPosition(gameWidth / 2, gameHeight / 2 + 50);
-                else child.setPosition(gameWidth / 2, gameHeight / 2 + 100);
+                else child.setPosition(gameWidth / 2, gameHeight / 2 + 50);
             }
         });
         return;
     }
 
-    // Пересоздаем платформы, если они существуют
     if (platforms) {
         platforms.clear(true, true);
         platforms = createPlatforms(this, gameWidth, gameHeight);
@@ -921,53 +1016,44 @@ function resize(gameSize) {
     uiElements.dragonHpText.setPosition(gameWidth * GAME_CONSTANTS.UI_DRAGON_HP_X - 50, gameHeight * 0.033);
     uiElements.waveText.setPosition(gameWidth / 2, gameHeight * GAME_CONSTANTS.UI_WAVE_Y);
 
-    // Обновляем мобильные элементы управления
-    if (this.mobileControls) {
-        if (this.mobileControls.joystick) {
-            this.mobileControls.joystick.setPosition(gameWidth * 0.15, gameHeight * 0.85);
-        } else {
-            if (this.mobileControls.leftButton) this.mobileControls.leftButton.setPosition(gameWidth * 0.05, gameHeight * 0.85);
-            if (this.mobileControls.rightButton) this.mobileControls.rightButton.setPosition(gameWidth * 0.25, gameHeight * 0.85);
+    function resize(gameSize) {
+        gameWidth = gameSize.width;
+        gameHeight = gameSize.height;
+    
+        // Существующий код...
+    
+        if (this.virtualButtons && isMobileDevice()) {
+            const buttonSize = gameWidth * 0.1;
+            const padding = buttonSize * 0.2;
+    
+            this.virtualButtons.left.button.setPosition(buttonSize * 0.5 + padding, gameHeight - buttonSize * 0.5 - padding);
+            this.virtualButtons.right.button.setPosition(buttonSize * 1.5 + padding * 2, gameHeight - buttonSize * 0.5 - padding);
+            this.virtualButtons.jump.button.setPosition(gameWidth - buttonSize * 1.5 - padding * 2, gameHeight - buttonSize * 0.5 - padding);
+            this.virtualButtons.fire.button.setPosition(gameWidth - buttonSize * 0.5 - padding, gameHeight - buttonSize * 0.5 - padding);
+            this.virtualButtons.music.button.setPosition(gameWidth - buttonSize * 0.5 - padding, buttonSize * 0.5 + padding);
+            this.virtualButtons.sound.button.setPosition(gameWidth - buttonSize * 1.5 - padding * 2, buttonSize * 0.5 + padding);
+    
+            Object.values(this.virtualButtons).forEach(button => button.button.setScale(buttonSize / 100));
         }
-        this.mobileControls.jumpButton.setPosition(gameWidth * 0.875, gameHeight * 0.83);
-        this.mobileControls.shootButton.setPosition(gameWidth * 0.75, gameHeight * 0.83);
     }
+
 }
 
 function decreaseTreasureHealth() {
-    let treasureDamaged = false;
+    let enemiesNearTreasure = 0;
+
+    // Подсчитываем врагов в радиусе сокровища
     enemies.getChildren().forEach(enemy => {
-        if (!enemy.active || enemy.getData('hasCoin')) return;
+        if (!enemy.active || enemy.getData('hasCoin')) return; // Пропускаем неактивных или убегающих с монетой
         const distance = Phaser.Math.Distance.Between(treasure.x, treasure.y, enemy.x, enemy.y);
         if (distance < GAME_CONSTANTS.TREASURE_DAMAGE_RADIUS) {
-            treasureDamaged = true;
+            enemiesNearTreasure++;
         }
     });
-    if (treasureDamaged) {
-        treasureHealth = Math.max(0, treasure.getData('health') - 1);
+
+    // Уменьшаем здоровье сокровища на количество врагов рядом
+    if (enemiesNearTreasure > 0) {
+        treasureHealth = Math.max(0, treasure.getData('health') - enemiesNearTreasure);
         treasure.setData('health', treasureHealth);
     }
 }
-
-// Объявляем checkOrientation в глобальной области для доступа в restartGame
-function checkOrientation() {
-    if (window.innerHeight > window.innerWidth) {
-        orientationText.setVisible(true);
-    } else {
-        orientationText.setVisible(false);
-    }
-}
-
-function checkOrientationBeforeStart(scene) {
-    if (window.innerHeight > window.innerWidth) {
-        scene.add.text(gameWidth / 2, gameHeight / 2 + 150, 'Please rotate to landscape', {
-            fontFamily: 'MedievalSharp',
-            fontSize: '30px',
-            color: '#ff0000'
-        }).setOrigin(0.5);
-        return false;
-    }
-    return true;
-}
-
-let orientationText; // Глобальная переменная для текста ориентации
