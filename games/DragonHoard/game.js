@@ -39,7 +39,8 @@ const config = {
     height: 720,
     scale: { mode: Phaser.Scale.FIT, autoCenter: Phaser.Scale.CENTER_BOTH },
     physics: { default: 'arcade', arcade: { gravity: { y: GAME_CONSTANTS.GRAVITY_Y }, debug: false } },
-    scene: { preload, create, update }
+    scene: { preload, create, update },
+    input: { touch: true }
 };
 
 const game = new Phaser.Game(config);
@@ -151,69 +152,57 @@ class Dragon {
 }
 
 class VirtualButton {
-    constructor(scene, x, y, key, callback, scale = 1, tintPressed = 0xaaaaaa, isToggle = false) {
+    constructor(scene, x, y, key, scale = 1, tintPressed = 0xaaaaaa) {
         this.scene = scene;
-        this.callback = callback;
-        this.activePointers = new Set(); // Отслеживаем указатели
-        this.isPressed = false; // Состояние кнопки
-        this.isToggle = isToggle;
+        this.activePointers = new Set();
+        this.isPressed = false;
 
         this.button = scene.add.image(x, y, key)
             .setScale(scale)
             .setInteractive()
             .setDepth(1000);
 
-            if (this.isToggle) {
-                this.button.on('pointerup', () => {
-                    this.callback();
-                });
-            } else {
-                this.button.on('pointerdown', (pointer) => {
-                    this.activePointers.add(pointer.id);
-                    if (!this.isPressed) {
-                        this.isPressed = true;
-                        this.button.setTint(tintPressed);
-                        this.callback(true);
-                    }
-                });
-    
-                this.button.on('pointerup', (pointer) => {
-                    this.activePointers.delete(pointer.id);
-                    if (this.activePointers.size === 0 && this.isPressed) {
-                        this.isPressed = false;
-                        this.button.clearTint();
-                        this.callback(false);
-                    }
-                });
-    
-                this.button.on('pointerout', (pointer) => {
-                    this.activePointers.delete(pointer.id);
-                    if (this.activePointers.size === 0 && this.isPressed) {
-                        this.isPressed = false;
-                        this.button.clearTint();
-                        this.callback(false);
-                    }
-                });
+        this.button.on('pointerdown', (pointer) => {
+            this.activePointers.add(pointer.id);
+            if (!this.isPressed) {
+                this.isPressed = true;
+                this.button.setTint(tintPressed);
             }
-        }
-    
-        // Метод для проверки состояния кнопки
-        getIsPressed() {
-            return this.isPressed;
-        }
-    
-        setVisible(visible) {
-            this.button.setVisible(visible);
-        }
-    
-        setTexture(texture) {
-            this.button.setTexture(texture);
-        }
-    
-        destroy() {
-            this.button.destroy();
-        }
+        });
+
+        this.button.on('pointerup', (pointer) => {
+            this.activePointers.delete(pointer.id);
+            if (this.activePointers.size === 0) {
+                this.isPressed = false;
+                this.button.clearTint();
+            }
+        });
+
+        this.button.on('pointerout', (pointer) => {
+            this.activePointers.delete(pointer.id);
+            if (this.activePointers.size === 0) {
+                this.isPressed = false;
+                this.button.clearTint();
+            }
+        });
     }
+
+    getIsPressed() {
+        return this.isPressed;
+    }
+
+    setVisible(visible) {
+        this.button.setVisible(visible);
+    }
+
+    setTexture(texture) {
+        this.button.setTexture(texture);
+    }
+
+    destroy() {
+        this.button.destroy();
+    }
+}
 
 function preload() {
     console.log('Starting preload...');
@@ -465,14 +454,13 @@ function startGame() {
         const buttonSize = gameWidth * 0.1;
         const padding = buttonSize * 0.3;
         let scaleButton = 1.7;
-
+    
         this.virtualButtons = {
             left: new VirtualButton(
                 this,
                 buttonSize * 0.5 + padding,
                 gameHeight - buttonSize * 0.5 - padding,
                 'left_button',
-                (pressed) => {}, // Callback не нужен, состояние хранится в кнопке
                 scaleButton
             ),
             right: new VirtualButton(
@@ -480,7 +468,6 @@ function startGame() {
                 buttonSize * 1.5 + padding * 2,
                 gameHeight - buttonSize * 0.5 - padding,
                 'right_button',
-                (pressed) => {},
                 scaleButton
             ),
             jump: new VirtualButton(
@@ -488,7 +475,6 @@ function startGame() {
                 gameWidth - buttonSize * 1.5 - padding * 2,
                 gameHeight - buttonSize * 0.5 - padding,
                 'jump_button',
-                (pressed) => {},
                 scaleButton
             ),
             fire: new VirtualButton(
@@ -496,37 +482,25 @@ function startGame() {
                 gameWidth - buttonSize * 0.5 - padding,
                 gameHeight - buttonSize * 0.5 - padding,
                 'fire_button',
-                (pressed) => {},
                 scaleButton
             ),
-            music: new VirtualButton(
-                this,
-                gameWidth - buttonSize * 0.5 - padding,
-                buttonSize * 0.5 + padding,
-                isMusicEnabled ? 'music_on' : 'music_off',
-                () => {
-                    toggleMusic(this);
-                    this.virtualButtons.music.setTexture(isMusicEnabled ? 'music_on' : 'music_off');
-                },
-                buttonSize / 100,
-                0xaaaaaa,
-                true
-            ),
-            sound: new VirtualButton(
-                this,
-                gameWidth - buttonSize * 1.5 - padding * 2,
-                buttonSize * 0.5 + padding,
-                isSoundEnabled ? 'sound_on' : 'sound_off',
-                () => {
-                    isSoundEnabled = !isSoundEnabled;
-                    this.virtualButtons.sound.setTexture(isSoundEnabled ? 'sound_on' : 'sound_off');
-                },
-                buttonSize / 100,
-                0xaaaaaa,
-                true
-            )
+            // Кнопки музыки и звука остаются с toggle-логикой, но их можно вынести отдельно
+            music: new VirtualButton(this, gameWidth - buttonSize * 0.5 - padding, buttonSize * 0.5 + padding, isMusicEnabled ? 'music_on' : 'music_off', buttonSize / 100),
+            sound: new VirtualButton(this, gameWidth - buttonSize * 1.5 - padding * 2, buttonSize * 0.5 + padding, isSoundEnabled ? 'sound_on' : 'sound_off', buttonSize / 100)
         };
+    
+        // Отдельная обработка для toggle-кнопок
+        this.virtualButtons.music.button.on('pointerup', () => {
+            toggleMusic(this);
+            this.virtualButtons.music.setTexture(isMusicEnabled ? 'music_on' : 'music_off');
+        });
+        this.virtualButtons.sound.button.on('pointerup', () => {
+            isSoundEnabled = !isSoundEnabled;
+            this.virtualButtons.sound.setTexture(isSoundEnabled ? 'sound_on' : 'sound_off');
+        });
     }
+
+
     cursors = scene.input.keyboard.createCursorKeys();
     scene.input.keyboard.on('keydown-SPACE', () => dragon.shoot(), scene);
     scene.input.keyboard.on('keydown-R', () => restartGame.call(scene));
@@ -565,7 +539,7 @@ function update() {
 
     dragon.move(cursors);
 
-    if (isMobileDevice() && this.virtualButtons) {
+   if (isMobileDevice() && this.virtualButtons) {
         const leftPressed = this.virtualButtons.left.getIsPressed();
         const rightPressed = this.virtualButtons.right.getIsPressed();
         const jumpPressed = this.virtualButtons.jump.getIsPressed();
@@ -599,13 +573,13 @@ function update() {
             dragon.stopShooting();
         }
     } else {
-        // Клавиатурный прыжок
+        dragon.move(cursors);
+
         if (cursors.up.isDown && dragon.sprite.body.touching.down) {
             dragon.sprite.setVelocityY(GAME_CONSTANTS.DRAGON_JUMP);
             if (isSoundEnabled) this.sound.play('jump_sound');
         }
 
-        // Клавиатурная стрельба
         if (cursors.space.isDown) {
             dragon.shoot();
         } else {
