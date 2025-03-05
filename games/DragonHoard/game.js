@@ -18,18 +18,18 @@ const GAME_CONSTANTS = {
     UI_SCORE_X: 0.025,
     UI_WAVE_Y: 0.066,
     UI_DRAGON_HP_X: 0.9,
-    ENEMY_SPAWN_DELAY: 2000,
+    ENEMY_SPAWN_DELAY: 1000,
     ASPECT_RATIO: 16 / 9,
     BONUS_HP_RESTORE: 10,
     BONUS_LIFE_RESTORE: 1,
     TREASURE_DAMAGE_RADIUS: 50,
-    TREASURE_HP_LOSS_RATE: 300,
+    TREASURE_HP_LOSS_RATE: 200,
     ARCHER_ARROW_SPEED: 300,
     ARCHER_SHOOT_DELAY: 2000,
     WAVE_PREPARATION_TIME: 5000,
     ENEMY_SPAWN_INTERVAL: 1000,
     MIN_ENEMY_SPACING: 60,
-    MIN_DRAGON_ENEMY_DISTANCE: 200
+    MIN_DRAGON_ENEMY_DISTANCE: 60
 };
 
 const config = {
@@ -108,14 +108,13 @@ class Dragon {
         }
     }
     move(cursors) {
-        const virtualControls = this.scene.virtualControls || { left: false, right: false };
-    
-        if (cursors.left.isDown || virtualControls.left) {
+        // Только для клавиатурного ввода
+        if (cursors.left.isDown) {
             this.sprite.setVelocityX(-GAME_CONSTANTS.DRAGON_SPEED);
             this.lastDirection = -1;
             this.sprite.setScale(-1, 1).anims.play('dragon_walk', true);
             this.sprite.body.setOffset(64, 0);
-        } else if (cursors.right.isDown || virtualControls.right) {
+        } else if (cursors.right.isDown) {
             this.sprite.setVelocityX(GAME_CONSTANTS.DRAGON_SPEED);
             this.lastDirection = 1;
             this.sprite.setScale(1, 1).anims.play('dragon_walk', true);
@@ -123,13 +122,12 @@ class Dragon {
         } else {
             this.sprite.setVelocityX(0).anims.play('dragon_idle', true);
         }
-    
-        // Прыжок остался на клавиатуре или через виртуальную кнопку
+
         if (cursors.up.isDown && this.sprite.body.touching.down) {
             this.sprite.setVelocityY(GAME_CONSTANTS.DRAGON_JUMP);
             if (isSoundEnabled) this.scene.sound.play('jump_sound');
         }
-    
+
         if (this.debugRect) this.debugRect.setPosition(this.sprite.body.x + 32, this.sprite.body.y + 32);
     }
 
@@ -160,35 +158,43 @@ class VirtualButton {
         this.callback = callback;
         this.isPressed = false;
         this.isToggle = isToggle;
+        this.pointerId = null; // Для отслеживания конкретного указателя
 
         this.button = scene.add.image(x, y, key)
             .setScale(scale)
-            .setInteractive()
+            .setInteractive({ useHandCursor: true }) // Включаем интерактивность
             .setDepth(1000);
 
-        if (this.isToggle) {
-            this.button.on('pointerup', () => {
-                this.callback();
-            });
-        } else {
-            this.button.on('pointerdown', () => {
+        // Обработка мультитач через указатели
+        this.button.on('pointerdown', (pointer) => {
+            if (this.isToggle) return; // Тогглы обрабатываются отдельно
+            if (!this.pointerId) { // Если кнопка еще не занята другим указателем
                 this.isPressed = true;
+                this.pointerId = pointer.id; // Сохраняем ID указателя
                 this.button.setTint(tintPressed);
-                callback(true);
-            });
-            this.button.on('pointerup', () => {
+                this.callback(true);
+            }
+        });
+
+        this.button.on('pointerup', (pointer) => {
+            if (this.isToggle) {
+                this.callback();
+            } else if (this.pointerId === pointer.id) {
                 this.isPressed = false;
+                this.pointerId = null;
                 this.button.clearTint();
-                callback(false);
-            });
-            this.button.on('pointerout', () => {
-                if (this.isPressed) {
-                    this.isPressed = false;
-                    this.button.clearTint();
-                    callback(false);
-                }
-            });
-        }
+                this.callback(false);
+            }
+        });
+
+        this.button.on('pointerout', (pointer) => {
+            if (!this.isToggle && this.pointerId === pointer.id) {
+                this.isPressed = false;
+                this.pointerId = null;
+                this.button.clearTint();
+                this.callback(false);
+            }
+        });
     }
 
     setVisible(visible) {
@@ -203,6 +209,8 @@ class VirtualButton {
         this.button.destroy();
     }
 }
+
+
 function preload() {
     console.log('Starting preload...');
     this.load.on('progress', value => console.log(`Loading progress: ${Math.round(value * 100)}%`));
@@ -214,13 +222,18 @@ function preload() {
     this.load.image('treasure', 'assets/sprites/treasure_cartoon.png');
     this.load.spritesheet('knight', 'assets/sprites/knight_spritesheet.png', { frameWidth: 48, frameHeight: 48 });
     this.load.spritesheet('griffin', 'assets/sprites/griffin_spritesheet.png', { frameWidth: 48, frameHeight: 48 });
+
     this.load.spritesheet('archer', 'assets/sprites/archer_spritesheet.png', { frameWidth: 48, frameHeight: 48 });
+    this.load.spritesheet('bow', 'assets/sprites/bow_spritesheet.png', { frameWidth: 32, frameHeight: 32 }); // Новый спрайтшит для лука
+
     this.load.spritesheet('fireball', 'assets/sprites/fireball_spritesheet.png', { frameWidth: 36, frameHeight: 24 });
     this.load.image('arrow', 'assets/sprites/arrow.png');
     this.load.image('platform_tile', 'assets/sprites/platform_cartoon.png');
     this.load.image('crystal_bonus', 'assets/sprites/crystal_bonus_cartoon.png');
     this.load.image('coin', 'assets/sprites/coin.png');
     this.load.image('cave_bg', 'assets/backgrounds/cave_bg_cartoon.png');
+
+
     this.load.audio('fireball_sound', 'assets/sounds/fireball.wav');
     this.load.audio('coin_steal', 'assets/sounds/coin_steal.wav');
     this.load.audio('bonus_collect', 'assets/sounds/bonus.wav');
@@ -229,7 +242,10 @@ function preload() {
     this.load.audio('damage_sound', 'assets/sounds/damage.wav');
     this.load.audio('wave_start', 'assets/sounds/wave_start.wav');
     this.load.audio('enemy_death', 'assets/sounds/enemy_death.wav');
+
+
     this.load.audio('background_music', 'assets/sounds/background_music.mp3');
+
     this.load.image('left_button', 'assets/sprites/left.png');
     this.load.image('right_button', 'assets/sprites/right.png');
     this.load.image('jump_button', 'assets/sprites/jump.png');
@@ -250,7 +266,11 @@ function create() {
         this.anims.create({ key: 'dragon_walk', frames: this.anims.generateFrameNumbers('dragon', { start: 0, end: 3 }), frameRate: 10, repeat: -1 });
         this.anims.create({ key: 'knight_walk', frames: this.anims.generateFrameNumbers('knight', { start: 0, end: 3 }), frameRate: 8, repeat: -1 });
         this.anims.create({ key: 'griffin_walk', frames: this.anims.generateFrameNumbers('griffin', { start: 0, end: 3 }), frameRate: 10, repeat: -1 });
+
         this.anims.create({ key: 'archer_walk', frames: this.anims.generateFrameNumbers('archer', { start: 0, end: 3 }), frameRate: 8, repeat: -1 });
+        this.anims.create({ key: 'bow_idle', frames: this.anims.generateFrameNumbers('bow', { start: 0, end: 0 }), frameRate: 1, repeat: -1 });
+        this.anims.create({ key: 'bow_shoot', frames: this.anims.generateFrameNumbers('bow', { start: 1, end: 3 }), frameRate: 15, repeat: 0 });
+
         this.anims.create({ key: 'fireball_fly', frames: this.anims.generateFrameNumbers('fireball', { start: 0, end: 2 }), frameRate: 15, repeat: -1 });
     }
 
@@ -433,10 +453,12 @@ function startGame() {
     this.virtualButtons = {};
 
     if (isMobileDevice()) {
-        const buttonSize = gameWidth * 0.1; // Размер кнопки — 10% ширины экрана
-        const padding = buttonSize * 0.2; // Отступ между кнопками
+        const buttonSize = gameWidth * 0.1;
+        const padding = buttonSize * 0.2;
 
-        // Кнопки движения (слева снизу)
+        this.virtualButtons = {};
+        this.virtualControls = { left: false, right: false, jump: false, fire: false }; // Независимые состояния
+
         this.virtualButtons.left = new VirtualButton(
             this,
             buttonSize * 0.5 + padding,
@@ -451,29 +473,20 @@ function startGame() {
             'right_button',
             (pressed) => this.virtualControls.right = pressed
         );
-
-        // Кнопки прыжка и стрельбы (справа снизу)
         this.virtualButtons.jump = new VirtualButton(
             this,
             gameWidth - buttonSize * 1.5 - padding * 2,
             gameHeight - buttonSize * 0.5 - padding,
             'jump_button',
-            (pressed) => {
-                if (pressed && dragon.sprite.body.touching.down) {
-                    dragon.sprite.setVelocityY(GAME_CONSTANTS.DRAGON_JUMP);
-                    if (isSoundEnabled) this.sound.play('jump_sound');
-                }
-            }
+            (pressed) => this.virtualControls.jump = pressed
         );
         this.virtualButtons.fire = new VirtualButton(
             this,
             gameWidth - buttonSize * 0.5 - padding,
-            gameHeight - buttonSize * 0.5 - padding,
             'fire_button',
             (pressed) => this.virtualControls.fire = pressed
         );
 
-        // Кнопки управления звуком (вверху справа)
         this.virtualButtons.music = new VirtualButton(
             this,
             gameWidth - buttonSize * 0.5 - padding,
@@ -483,9 +496,9 @@ function startGame() {
                 toggleMusic(this);
                 this.virtualButtons.music.setTexture(isMusicEnabled ? 'music_on' : 'music_off');
             },
-            buttonSize / 100, // Масштаб кнопки
+            buttonSize / 100,
             0xaaaaaa,
-            true // Режим переключения
+            true
         );
         this.virtualButtons.sound = new VirtualButton(
             this,
@@ -498,11 +511,8 @@ function startGame() {
             },
             buttonSize / 100,
             0xaaaaaa,
-            true // Режим переключения
+            true
         );
-
-        // Объект для хранения состояния виртуальных кнопок
-        this.virtualControls = { left: false, right: false, fire: false };
     }
 
 
@@ -535,11 +545,43 @@ function update() {
     if (!gameStarted || !dragon) return; // Проверка на старт игры и существование dragon
 
     dragon.move(cursors);
-    if (cursors.space.isDown || (this.virtualControls && this.virtualControls.fire)) {
+    if (cursors.space.isDown) {
         dragon.shoot();
     } else {
         dragon.stopShooting();
     }
+
+    if (this.virtualControls) {
+        if (this.virtualControls.left) {
+            dragon.sprite.setVelocityX(-GAME_CONSTANTS.DRAGON_SPEED);
+            dragon.lastDirection = -1;
+            dragon.sprite.setScale(-1, 1).anims.play('dragon_walk', true);
+            dragon.sprite.body.setOffset(64, 0);
+        } else if (this.virtualControls.right) {
+            dragon.sprite.setVelocityX(GAME_CONSTANTS.DRAGON_SPEED);
+            dragon.lastDirection = 1;
+            dragon.sprite.setScale(1, 1).anims.play('dragon_walk', true);
+            dragon.sprite.body.setOffset(0, 0);
+        } else {
+            dragon.sprite.setVelocityX(0).anims.play('dragon_idle', true);
+        }
+
+        if (this.virtualControls.jump && dragon.sprite.body.touching.down) {
+            dragon.sprite.setVelocityY(GAME_CONSTANTS.DRAGON_JUMP);
+            if (isSoundEnabled) this.sound.play('jump_sound');
+        }
+
+        if (this.virtualControls.fire) {
+            dragon.shoot();
+        } else {
+            dragon.stopShooting();
+        }
+    } else if (cursors.space.isDown) {
+        dragon.shoot();
+    } else {
+        dragon.stopShooting();
+    }
+
 
     enemies.getChildren().forEach(enemy => {
         if (!enemy.active) return;
@@ -549,6 +591,10 @@ function update() {
 
         if (isArcher) {
             enemy.setVelocityX(0).anims.play('archer_walk', true);
+            // Обновляем позицию лука, только если он существует
+            if (enemy.bow) {
+                enemy.bow.setPosition(enemy.x, enemy.y - 10); // Лук следует за лучником
+            }
             if (!enemy.shootTimer) {
                 enemy.shootTimer = this.time.addEvent({
                     delay: GAME_CONSTANTS.ARCHER_SHOOT_DELAY,
@@ -819,6 +865,14 @@ function spawnEnemy(x, y, type, spawnSide, isArcher = false) {
         enemy.setData('isArcher', isArcher);
         enemy.platformCollider = this.physics.add.collider(enemy, platforms);
 
+        if (isArcher) {
+            // Создаем лук как отдельный объект
+            enemy.bow = this.add.sprite(x, y - 10, 'bow'); // Позиция лука чуть выше центра лучника
+            enemy.bow.setOrigin(0.3, 0.3); // Центрируем точку вращения
+            enemy.bow.anims.play('bow_idle', true); // Лук в состоянии покоя
+            enemy.bow.setDepth(enemy.depth + 1); // Лук поверх лучника
+        }
+
         if (!isArcher && type !== 'archer') {
             const jumpDelay = type === 'griffin' ? Phaser.Math.Between(1000, 2000) : Phaser.Math.Between(3000, 5000);
             enemy.jumpTimer = this.time.addEvent({
@@ -843,19 +897,42 @@ function spawnEnemy(x, y, type, spawnSide, isArcher = false) {
 }
 
 function shootArrow(enemy) {
-    if (!enemy.active || arrows.countActive(true) >= GAME_CONSTANTS.MAX_ARROWS) return;
-    let arrow = arrows.get(enemy.x, enemy.y - 20);
-    if (arrow) {
-        arrow.setActive(true).setVisible(true)
-            .body.setAllowGravity(false);
-        const directionX = dragon.sprite.x - enemy.x;
-        const directionY = dragon.sprite.y - enemy.y;
-        const angle = Phaser.Math.Angle.Between(enemy.x, enemy.y, dragon.sprite.x, dragon.sprite.y);
-        const velocityX = Math.cos(angle) * GAME_CONSTANTS.ARCHER_ARROW_SPEED;
-        const velocityY = Math.sin(angle) * GAME_CONSTANTS.ARCHER_ARROW_SPEED;
-        arrow.setVelocity(velocityX, velocityY)
-            .setRotation(angle);
-        if (isSoundEnabled) this.sound.play('arrow_shot');
+    if (!enemy.active || arrows.countActive(true) >= GAME_CONSTANTS.MAX_ARROWS || !enemy.bow) return;
+
+    // Направление лука в сторону дракона
+    const angle = Phaser.Math.Angle.Between(enemy.x, enemy.y, dragon.sprite.x, dragon.sprite.y);
+    enemy.bow.setRotation(angle); // Вращаем лук в сторону дракона
+
+    // Проверяем, есть ли активный таймер стрельбы
+    if (!enemy.isShooting) {
+        enemy.isShooting = true;
+
+        // Воспроизводим анимацию натяжения лука
+        enemy.bow.anims.play('bow_shoot', true);
+
+        // Задержка перед выстрелом, чтобы анимация завершилась
+        this.time.delayedCall(300, () => {
+            if (!enemy.active || !enemy.bow) { // Проверка перед выстрелом
+                enemy.isShooting = false;
+                return;
+            }
+            let arrow = arrows.get(enemy.x, enemy.y - 20);
+            if (arrow) {
+                arrow.setActive(true).setVisible(true)
+                    .body.setAllowGravity(false);
+                const directionX = dragon.sprite.x - enemy.x;
+                const directionY = dragon.sprite.y - enemy.y;
+                const velocityX = Math.cos(angle) * GAME_CONSTANTS.ARCHER_ARROW_SPEED;
+                const velocityY = Math.sin(angle) * GAME_CONSTANTS.ARCHER_ARROW_SPEED;
+                arrow.setVelocity(velocityX, velocityY)
+                    .setRotation(angle);
+                if (isSoundEnabled) this.sound.play('arrow_shot');
+            }
+            if (enemy.bow) { // Дополнительная проверка
+                enemy.bow.anims.play('bow_idle', true); // Возвращаем лук в состояние покоя
+            }
+            enemy.isShooting = false;
+        }, [], this);
     }
 }
 
@@ -873,7 +950,10 @@ function stealCoin(enemy, treasure) {
 
 function hitEnemy(fireball, enemy) {
     fireball.destroy();
-    if (enemy.jumpTimer) enemy.jumpTimer.remove();
+    if (enemy.jumpTimer) {
+        enemy.jumpTimer.remove();
+        enemy.jumpTimer = null;
+    }
     if (enemy.shootTimer) {
         enemy.shootTimer.remove();
         enemy.shootTimer = null;
@@ -883,14 +963,17 @@ function hitEnemy(fireball, enemy) {
         enemy.platformCollider = null;
     }
     if (enemy.coinSprite) enemy.coinSprite.destroy();
+    if (enemy.bow) {
+        enemy.bow.destroy();
+        enemy.bow = null; // Явно устанавливаем null после уничтожения
+    }
     if (enemy.debugRect) enemy.debugRect.destroy();
-    if (isSoundEnabled) this.sound.play('enemy_death'); // Звук смерти врага
+    if (isSoundEnabled) this.sound.play('enemy_death');
     enemy.destroy();
     score += 10;
     if (Math.random() < 0.2) spawnBonus(enemy.x, enemy.y);
     console.log(`Enemy destroyed, active enemies: ${enemies.countActive(true)}`);
 }
-
 function spawnBonus(x, y) {
     if (bonuses.countActive(true) >= GAME_CONSTANTS.MAX_BONUSES) return;
     let bonus = bonuses.get(x, y, 'crystal_bonus');
