@@ -23,7 +23,7 @@ const GAME_CONSTANTS = {
     BONUS_HP_RESTORE: 10,
     BONUS_LIFE_RESTORE: 1,
     TREASURE_DAMAGE_RADIUS: 50,
-    TREASURE_HP_LOSS_RATE: 200,
+    TREASURE_HP_LOSS_RATE: 300,
     ARCHER_ARROW_SPEED: 300,
     ARCHER_SHOOT_DELAY: 2000,
     WAVE_PREPARATION_TIME: 5000,
@@ -108,13 +108,14 @@ class Dragon {
         }
     }
     move(cursors) {
-        // Только для клавиатурного ввода
-        if (cursors.left.isDown) {
+        const virtualControls = this.scene.virtualControls || { left: false, right: false };
+    
+        if (cursors.left.isDown || virtualControls.left) {
             this.sprite.setVelocityX(-GAME_CONSTANTS.DRAGON_SPEED);
             this.lastDirection = -1;
             this.sprite.setScale(-1, 1).anims.play('dragon_walk', true);
             this.sprite.body.setOffset(64, 0);
-        } else if (cursors.right.isDown) {
+        } else if (cursors.right.isDown || virtualControls.right) {
             this.sprite.setVelocityX(GAME_CONSTANTS.DRAGON_SPEED);
             this.lastDirection = 1;
             this.sprite.setScale(1, 1).anims.play('dragon_walk', true);
@@ -122,12 +123,13 @@ class Dragon {
         } else {
             this.sprite.setVelocityX(0).anims.play('dragon_idle', true);
         }
-
+    
+        // Прыжок остался на клавиатуре или через виртуальную кнопку
         if (cursors.up.isDown && this.sprite.body.touching.down) {
             this.sprite.setVelocityY(GAME_CONSTANTS.DRAGON_JUMP);
             if (isSoundEnabled) this.scene.sound.play('jump_sound');
         }
-
+    
         if (this.debugRect) this.debugRect.setPosition(this.sprite.body.x + 32, this.sprite.body.y + 32);
     }
 
@@ -158,43 +160,43 @@ class VirtualButton {
         this.callback = callback;
         this.isPressed = false;
         this.isToggle = isToggle;
-        this.pointerId = null; // Для отслеживания конкретного указателя
+        this.activePointerId = null; // Храним ID активного указателя
 
         this.button = scene.add.image(x, y, key)
             .setScale(scale)
-            .setInteractive({ useHandCursor: true }) // Включаем интерактивность
+            .setInteractive()
             .setDepth(1000);
 
-        // Обработка мультитач через указатели
-        this.button.on('pointerdown', (pointer) => {
-            if (this.isToggle) return; // Тогглы обрабатываются отдельно
-            if (!this.pointerId) { // Если кнопка еще не занята другим указателем
-                this.isPressed = true;
-                this.pointerId = pointer.id; // Сохраняем ID указателя
-                this.button.setTint(tintPressed);
-                this.callback(true);
-            }
-        });
-
-        this.button.on('pointerup', (pointer) => {
-            if (this.isToggle) {
+        if (this.isToggle) {
+            this.button.on('pointerup', () => {
                 this.callback();
-            } else if (this.pointerId === pointer.id) {
-                this.isPressed = false;
-                this.pointerId = null;
-                this.button.clearTint();
-                this.callback(false);
-            }
-        });
-
-        this.button.on('pointerout', (pointer) => {
-            if (!this.isToggle && this.pointerId === pointer.id) {
-                this.isPressed = false;
-                this.pointerId = null;
-                this.button.clearTint();
-                this.callback(false);
-            }
-        });
+            });
+        } else {
+            this.button.on('pointerdown', (pointer) => {
+                if (this.activePointerId === null) { // Только если кнопка не занята другим указателем
+                    this.isPressed = true;
+                    this.activePointerId = pointer.id;
+                    this.button.setTint(tintPressed);
+                    callback(true);
+                }
+            });
+            this.button.on('pointerup', (pointer) => {
+                if (this.activePointerId === pointer.id) {
+                    this.isPressed = false;
+                    this.activePointerId = null;
+                    this.button.clearTint();
+                    callback(false);
+                }
+            });
+            this.button.on('pointerout', (pointer) => {
+                if (this.activePointerId === pointer.id && this.isPressed) {
+                    this.isPressed = false;
+                    this.activePointerId = null;
+                    this.button.clearTint();
+                    callback(false);
+                }
+            });
+        }
     }
 
     setVisible(visible) {
@@ -453,11 +455,8 @@ function startGame() {
     this.virtualButtons = {};
 
     if (isMobileDevice()) {
-        const buttonSize = gameWidth * 0.1;
+        const buttonSize = gameWidth * 0.17;
         const padding = buttonSize * 0.2;
-
-        this.virtualButtons = {};
-        this.virtualControls = { left: false, right: false, jump: false, fire: false }; // Независимые состояния
 
         this.virtualButtons.left = new VirtualButton(
             this,
@@ -478,15 +477,17 @@ function startGame() {
             gameWidth - buttonSize * 1.5 - padding * 2,
             gameHeight - buttonSize * 0.5 - padding,
             'jump_button',
-            (pressed) => this.virtualControls.jump = pressed
+            (pressed) => this.virtualControls.jump = pressed // Изменяем на состояние
         );
         this.virtualButtons.fire = new VirtualButton(
             this,
             gameWidth - buttonSize * 0.5 - padding,
+            gameHeight - buttonSize * 0.5 - padding,
             'fire_button',
             (pressed) => this.virtualControls.fire = pressed
         );
 
+        // Кнопки звука остаются без изменений
         this.virtualButtons.music = new VirtualButton(
             this,
             gameWidth - buttonSize * 0.5 - padding,
@@ -513,8 +514,9 @@ function startGame() {
             0xaaaaaa,
             true
         );
-    }
 
+        this.virtualControls = { left: false, right: false, jump: false, fire: false };
+    }
 
     cursors = scene.input.keyboard.createCursorKeys();
     scene.input.keyboard.on('keydown-SPACE', () => dragon.shoot(), scene);
@@ -545,44 +547,19 @@ function update() {
     if (!gameStarted || !dragon) return; // Проверка на старт игры и существование dragon
 
     dragon.move(cursors);
-    if (cursors.space.isDown) {
+
+
+    if (this.virtualControls && this.virtualControls.jump && dragon.sprite.body.touching.down) {
+        dragon.sprite.setVelocityY(GAME_CONSTANTS.DRAGON_JUMP);
+        if (isSoundEnabled) this.sound.play('jump_sound');
+    }
+
+    // Обработка стрельбы
+    if (cursors.space.isDown || (this.virtualControls && this.virtualControls.fire)) {
         dragon.shoot();
     } else {
         dragon.stopShooting();
     }
-
-    if (this.virtualControls) {
-        if (this.virtualControls.left) {
-            dragon.sprite.setVelocityX(-GAME_CONSTANTS.DRAGON_SPEED);
-            dragon.lastDirection = -1;
-            dragon.sprite.setScale(-1, 1).anims.play('dragon_walk', true);
-            dragon.sprite.body.setOffset(64, 0);
-        } else if (this.virtualControls.right) {
-            dragon.sprite.setVelocityX(GAME_CONSTANTS.DRAGON_SPEED);
-            dragon.lastDirection = 1;
-            dragon.sprite.setScale(1, 1).anims.play('dragon_walk', true);
-            dragon.sprite.body.setOffset(0, 0);
-        } else {
-            dragon.sprite.setVelocityX(0).anims.play('dragon_idle', true);
-        }
-
-        if (this.virtualControls.jump && dragon.sprite.body.touching.down) {
-            dragon.sprite.setVelocityY(GAME_CONSTANTS.DRAGON_JUMP);
-            if (isSoundEnabled) this.sound.play('jump_sound');
-        }
-
-        if (this.virtualControls.fire) {
-            dragon.shoot();
-        } else {
-            dragon.stopShooting();
-        }
-    } else if (cursors.space.isDown) {
-        dragon.shoot();
-    } else {
-        dragon.stopShooting();
-    }
-
-
     enemies.getChildren().forEach(enemy => {
         if (!enemy.active) return;
         let hasCoin = enemy.getData('hasCoin') || false;
@@ -1031,37 +1008,63 @@ function gameOver(message) {
 }
 
 function restartGame() {
-    this.scene.restart();
-    treasureHealth = GAME_CONSTANTS.INITIAL_TREASURE_HP;
-    score = 0;
-    waveNumber = 0;
-    gameStarted = false;
-    debugRects.forEach(rect => rect.destroy());
-    debugRects = [];
+    // Останавливаем все звуки
+    this.sound.stopAll();
+
+    // Очищаем таймеры и коллайдеры врагов
+    enemies.getChildren().forEach(enemy => {
+        if (enemy.jumpTimer) enemy.jumpTimer.remove();
+        if (enemy.shootTimer) enemy.shootTimer.remove();
+        if (enemy.platformCollider) this.physics.world.removeCollider(enemy.platformCollider);
+        if (enemy.bow) enemy.bow.destroy();
+    });
+
+    // Уничтожаем дракона
+    if (dragon) {
+        dragon.destroy();
+        dragon = null;
+    }
+
+    // Очищаем группы
     enemies.clear(true, true);
     fireballs.clear(true, true);
     bonuses.clear(true, true);
     arrows.clear(true, true);
-    enemiesToSpawn = [];
-    waveTimer = null;
-    spawnQueueTimer = null;
 
+    // Очищаем платформы
     if (platforms) {
         platforms.clear(true, true);
         platforms = null;
     }
 
+    // Очищаем виртуальные кнопки
     if (this.virtualButtons) {
         Object.values(this.virtualButtons).forEach(button => button.destroy());
         this.virtualButtons = null;
     }
 
-    this.backgroundMusic.stop();
-    this.scene.get(this.scene.key).create();
+    // Очищаем UI элементы
+    if (uiElements) {
+        Object.values(uiElements).forEach(element => element.destroy());
+        uiElements = null;
+    }
 
-    this.scene.get(this.scene.key).create();
+    // Очищаем отладочные прямоугольники
+    debugRects.forEach(rect => rect.destroy());
+    debugRects = [];
+
+    // Сбрасываем глобальные переменные
+    treasureHealth = GAME_CONSTANTS.INITIAL_TREASURE_HP;
+    score = 0;
+    waveNumber = 0;
+    gameStarted = false;
+    enemiesToSpawn = [];
+    waveTimer = null;
+    spawnQueueTimer = null;
+
+    // Перезапускаем сцену
+    this.scene.restart();
 }
-
 function updateUI() {
     uiElements.hpText.setText(`Treasure HP: ${treasure.getData('health')}`);
     uiElements.scoreText.setText(`Score: ${score}`);
