@@ -125,10 +125,6 @@ class Dragon {
         }
     
         // Прыжок остался на клавиатуре или через виртуальную кнопку
-        if (cursors.up.isDown && this.sprite.body.touching.down) {
-            this.sprite.setVelocityY(GAME_CONSTANTS.DRAGON_JUMP);
-            if (isSoundEnabled) this.scene.sound.play('jump_sound');
-        }
     
         if (this.debugRect) this.debugRect.setPosition(this.sprite.body.x + 32, this.sprite.body.y + 32);
     }
@@ -160,8 +156,6 @@ class VirtualButton {
         this.callback = callback;
         this.isPressed = false;
         this.isToggle = isToggle;
-        this.activePointers = new Set(); // Храним множество активных указателей
-
 
         this.button = scene.add.image(x, y, key)
             .setScale(scale)
@@ -173,28 +167,31 @@ class VirtualButton {
                 this.callback();
             });
         } else {
+            // Используем Set для отслеживания всех активных указателей
+            this.activePointers = new Set();
+
             this.button.on('pointerdown', (pointer) => {
-                if (this.activePointerId === null) { // Только если кнопка не занята другим указателем
-                    this.isPressed = true;
-                    this.activePointerId = pointer.id;
-                    this.button.setTint(tintPressed);
-                    callback(true);
-                }
+                this.activePointers.add(pointer.id);
+                this.isPressed = true;
+                this.button.setTint(tintPressed);
+                this.callback(true);
             });
+
             this.button.on('pointerup', (pointer) => {
-                if (this.activePointerId === pointer.id) {
+                this.activePointers.delete(pointer.id);
+                if (this.activePointers.size === 0) {
                     this.isPressed = false;
-                    this.activePointerId = null;
                     this.button.clearTint();
-                    callback(false);
+                    this.callback(false);
                 }
             });
+
             this.button.on('pointerout', (pointer) => {
-                if (this.activePointerId === pointer.id && this.isPressed) {
+                this.activePointers.delete(pointer.id);
+                if (this.activePointers.size === 0 && this.isPressed) {
                     this.isPressed = false;
-                    this.activePointerId = null;
                     this.button.clearTint();
-                    callback(false);
+                    this.callback(false);
                 }
             });
         }
@@ -342,75 +339,55 @@ const startText = this.add.text(gameWidth / 2, gameHeight / 2 + 50,
         if (!gameStarted) startGame.call(this);
     });
 
+    startText.on('pointerup', () => {
+        if (!gameStarted) startGame.call(this);
+    });
+
     fullscreenText.on('pointerup', () => {
         if (!this.scale.isFullscreen) {
             this.scale.startFullscreen();
         } else {
             this.scale.stopFullscreen();
         }
-        fullscreenText.setText(`Fullscreen: ${this.scale.isFullscreen ? 'ON' : 'OFF'} (Press F)`);
+        fullscreenText.setText(isMobileDevice() ?
+            `Fullscreen: ${this.scale.isFullscreen ? 'ON' : 'OFF'}` :
+            `Fullscreen: ${this.scale.isFullscreen ? 'ON' : 'OFF'} (Press F)`);
     });
 
+    musicToggle.on('pointerup', () => {
+        toggleMusic(this);
+        musicToggle.setText(`Music: ${isMusicEnabled ? 'ON' : 'OFF'} ${isMobileDevice() ? '' : '(Press M)'}`);
+    });
 
-    
-    if (isMobileDevice()) {
+    soundToggle.on('pointerup', () => {
+        isSoundEnabled = !isSoundEnabled;
+        soundToggle.setText(`Sound: ${isSoundEnabled ? 'ON' : 'OFF'} ${isMobileDevice() ? '' : '(Press S)'}`);
+    });
 
-        startText.on('pointerup', () => {
-            if (!gameStarted) {
-                startGame.call(this);
-            }
-        });
-
-        // Обработка тапов для переключения музыки и звука
-        musicToggle.on('pointerup', () => {
+    // Обработка клавиатуры (только для ПК)
+    if (!isMobileDevice()) {
+        this.input.keyboard.on('keydown-M', () => {
             toggleMusic(this);
-            musicToggle.setText(`Music: ${isMusicEnabled ? 'ON' : 'OFF'}`);
+            musicToggle.setText(`Music: ${isMusicEnabled ? 'ON' : 'OFF'} (Press M)`);
         });
-        soundToggle.on('pointerup', () => {
+
+        this.input.keyboard.on('keydown-S', () => {
             isSoundEnabled = !isSoundEnabled;
-            soundToggle.setText(`Sound: ${isSoundEnabled ? 'ON' : 'OFF'}`);
+            soundToggle.setText(`Sound: ${isSoundEnabled ? 'ON' : 'OFF'} (Press S)`);
         });
 
-        // Общий тап по экрану для старта игры, только если не на кнопках
-        this.input.once('pointerup', (pointer) => {
-            if (!gameStarted) {
-                const musicBounds = musicToggle.getBounds();
-                const soundBounds = soundToggle.getBounds();
-                const x = pointer.x;
-                const y = pointer.y;
+        this.input.keyboard.once('keydown-ENTER', () => startGame.call(this), this);
 
-                // Проверяем, что тап НЕ попал в границы musicToggle или soundToggle
-                if (!(x >= musicBounds.x && x <= musicBounds.x + musicBounds.width &&
-                      y >= musicBounds.y && y <= musicBounds.y + musicBounds.height) &&
-                    !(x >= soundBounds.x && x <= soundBounds.x + soundBounds.width &&
-                      y >= soundBounds.y && y <= soundBounds.y + soundBounds.height)) {
-                    startGame.call(this);
-                }
+        this.input.keyboard.on('keydown-F', () => {
+            if (!this.scale.isFullscreen) {
+                this.scale.startFullscreen();
+            } else {
+                this.scale.stopFullscreen();
             }
+            fullscreenText.setText(`Fullscreen: ${this.scale.isFullscreen ? 'ON' : 'OFF'} (Press F)`);
         });
-    } else {
-     musicToggle.on('pointerdown', () => {
-        isMusicEnabled = !isMusicEnabled;
-        musicToggle.setText(`Music: ${isMusicEnabled ? 'ON' : 'OFF'} (Press M)`);
-    });
-
-    soundToggle.on('pointerdown', () => {
-        isSoundEnabled = !isSoundEnabled;
-        soundToggle.setText(`Sound: ${isSoundEnabled ? 'ON' : 'OFF'} (Press S)`);
-    });
-
-    // Обработка клавиш
-    this.input.keyboard.on('keydown-M', () => {
-        toggleMusic(this); // Вызываем toggleMusic с текущей сценой
-        musicToggle.setText(`Music: ${isMusicEnabled ? 'ON' : 'OFF'} (Press M)`);
-    });
-
-    this.input.keyboard.on('keydown-S', () => {
-        isSoundEnabled = !isSoundEnabled;
-        soundToggle.setText(`Sound: ${isSoundEnabled ? 'ON' : 'OFF'} (Press S)`);
-    });
     }
-    this.input.keyboard.once('keydown-ENTER', () => startGame.call(this), this);
+
     this.scale.on('resize', resize, this);
 }
 
@@ -482,64 +459,65 @@ function startGame() {
 
     if (isMobileDevice()) {
         const buttonSize = gameWidth * 0.1;
-        const padding = buttonSize * 0.2;
+        const padding = buttonSize * 0.3;
+        let scaleButton = 1.7;
 
-        this.virtualButtons.left = new VirtualButton(
-            this,
-            buttonSize * 0.5 + padding,
-            gameHeight - buttonSize * 0.5 - padding,
-            'left_button',
-            (pressed) => this.virtualControls.left = pressed
-        );
-        this.virtualButtons.right = new VirtualButton(
-            this,
-            buttonSize * 1.5 + padding * 2,
-            gameHeight - buttonSize * 0.5 - padding,
-            'right_button',
-            (pressed) => this.virtualControls.right = pressed
-        );
-        this.virtualButtons.jump = new VirtualButton(
-            this,
-            gameWidth - buttonSize * 1.5 - padding * 2,
-            gameHeight - buttonSize * 0.5 - padding,
-            'jump_button',
-            (pressed) => this.virtualControls.jump = pressed // Изменяем на состояние
-        );
-        this.virtualButtons.fire = new VirtualButton(
-            this,
-            gameWidth - buttonSize * 0.5 - padding,
-            gameHeight - buttonSize * 0.5 - padding,
-            'fire_button',
-            (pressed) => this.virtualControls.fire = pressed
-        );
-
-        // Кнопки звука остаются без изменений
-        this.virtualButtons.music = new VirtualButton(
-            this,
-            gameWidth - buttonSize * 0.5 - padding,
-            buttonSize * 0.5 + padding,
-            isMusicEnabled ? 'music_on' : 'music_off',
-            () => {
-                toggleMusic(this);
-                this.virtualButtons.music.setTexture(isMusicEnabled ? 'music_on' : 'music_off');
-            },
-            buttonSize / 100,
-            0xaaaaaa,
-            true
-        );
-        this.virtualButtons.sound = new VirtualButton(
-            this,
-            gameWidth - buttonSize * 1.5 - padding * 2,
-            buttonSize * 0.5 + padding,
-            isSoundEnabled ? 'sound_on' : 'sound_off',
-            () => {
-                isSoundEnabled = !isSoundEnabled;
-                this.virtualButtons.sound.setTexture(isSoundEnabled ? 'sound_on' : 'sound_off');
-            },
-            buttonSize / 100,
-            0xaaaaaa,
-            true
-        );
+        this.virtualButtons = {
+            left: new VirtualButton(
+                this,
+                buttonSize * 0.5 + padding,
+                gameHeight - buttonSize * 0.5 - padding,
+                'left_button',
+                (pressed) => this.virtualControls.left = pressed,scaleButton
+            ),
+            right: new VirtualButton(
+                this,
+                buttonSize * 1.5 + padding * 2,
+                gameHeight - buttonSize * 0.5 - padding,
+                'right_button',
+                (pressed) => this.virtualControls.right = pressed,scaleButton
+            ),
+            jump: new VirtualButton(
+                this,
+                gameWidth - buttonSize * 1.5 - padding * 2,
+                gameHeight - buttonSize * 0.5 - padding,
+                'jump_button',
+                (pressed) => this.virtualControls.jump = pressed,scaleButton
+            ),
+            fire: new VirtualButton(
+                this,
+                gameWidth - buttonSize * 0.5 - padding,
+                gameHeight - buttonSize * 0.5 - padding,
+                'fire_button',
+                (pressed) => this.virtualControls.fire = pressed,scaleButton
+            ),
+            music: new VirtualButton(
+                this,
+                gameWidth - buttonSize * 0.5 - padding,
+                buttonSize * 0.5 + padding,
+                isMusicEnabled ? 'music_on' : 'music_off',
+                () => {
+                    toggleMusic(this);
+                    this.virtualButtons.music.setTexture(isMusicEnabled ? 'music_on' : 'music_off');
+                },
+                buttonSize / 100,
+                0xaaaaaa,
+                true
+            ),
+            sound: new VirtualButton(
+                this,
+                gameWidth - buttonSize * 1.5 - padding * 2,
+                buttonSize * 0.5 + padding,
+                isSoundEnabled ? 'sound_on' : 'sound_off',
+                () => {
+                    isSoundEnabled = !isSoundEnabled;
+                    this.virtualButtons.sound.setTexture(isSoundEnabled ? 'sound_on' : 'sound_off');
+                },
+                buttonSize / 100,
+                0xaaaaaa,
+                true
+            )
+        };
 
         this.virtualControls = { left: false, right: false, jump: false, fire: false };
     }
@@ -583,12 +561,13 @@ function update() {
     dragon.move(cursors);
 
 
-    if (this.virtualControls && this.virtualControls.jump && dragon.sprite.body.touching.down) {
+    if ((cursors.up.isDown || (this.virtualControls && this.virtualControls.jump)) && dragon.sprite.body.touching.down) {
         dragon.sprite.setVelocityY(GAME_CONSTANTS.DRAGON_JUMP);
         if (isSoundEnabled) this.sound.play('jump_sound');
+        if (this.virtualControls) this.virtualControls.jump = false; // Сбрасываем только для мобильных
     }
 
-    // Обработка стрельбы
+    // Стрельба для мобильных устройств и клавиатуры
     if (cursors.space.isDown || (this.virtualControls && this.virtualControls.fire)) {
         dragon.shoot();
     } else {
@@ -1118,8 +1097,11 @@ function resize(gameSize) {
     if (!gameStarted) {
         startScreen.getChildren().forEach(child => {
             if (child.type === 'Text') {
-                if (child.text === 'Dragon\'s Hoard') child.setPosition(gameWidth / 2, gameHeight / 2 - 50);
-                else child.setPosition(gameWidth / 2, gameHeight / 2 + 50);
+                if (child.text.includes('Dragon\'s Hoard')) child.setPosition(gameWidth / 2, gameHeight / 2 - 50);
+                else if (child.text.includes('Press ENTER') || child.text.includes('Click to start')) child.setPosition(gameWidth / 2, gameHeight / 2 + 50);
+                else if (child.text.includes('Music')) child.setPosition(gameWidth / 2, gameHeight / 2 + 100);
+                else if (child.text.includes('Sound')) child.setPosition(gameWidth / 2, gameHeight / 2 + 140);
+                else if (child.text.includes('Fullscreen')) child.setPosition(gameWidth / 2, gameHeight / 2 + 180);
             }
         });
         return;
@@ -1133,34 +1115,25 @@ function resize(gameSize) {
     treasure.setPosition(gameWidth / 2, gameHeight * GAME_CONSTANTS.TREASURE_Y);
     dragon.sprite.setPosition(gameWidth / 2, gameHeight * GAME_CONSTANTS.DRAGON_START_Y);
     if (dragon.debugRect) dragon.debugRect.setPosition(dragon.sprite.x, dragon.sprite.y);
-    uiElements.hpText.setPosition(gameWidth / 2 - 50, gameHeight * GAME_CONSTANTS.UI_HP_Y);
+    uiElements.hpText.setPosition(gameWidth / 2 - 70, gameHeight * GAME_CONSTANTS.UI_HP_Y);
     uiElements.scoreText.setPosition(gameWidth * GAME_CONSTANTS.UI_SCORE_X, gameHeight * 0.033);
-    uiElements.dragonHpText.setPosition(gameWidth * GAME_CONSTANTS.UI_DRAGON_HP_X - 50, gameHeight * 0.033);
+    uiElements.dragonHpText.setPosition(gameWidth * GAME_CONSTANTS.UI_DRAGON_HP_X - 70, gameHeight * 0.033);
     uiElements.waveText.setPosition(gameWidth / 2, gameHeight * GAME_CONSTANTS.UI_WAVE_Y);
 
-    function resize(gameSize) {
-        gameWidth = gameSize.width;
-        gameHeight = gameSize.height;
-    
-        // Существующий код...
-    
-        if (this.virtualButtons && isMobileDevice()) {
-            const buttonSize = gameWidth * 0.1;
-            const padding = buttonSize * 0.2;
-    
-            this.virtualButtons.left.button.setPosition(buttonSize * 0.5 + padding, gameHeight - buttonSize * 0.5 - padding);
-            this.virtualButtons.right.button.setPosition(buttonSize * 1.5 + padding * 2, gameHeight - buttonSize * 0.5 - padding);
-            this.virtualButtons.jump.button.setPosition(gameWidth - buttonSize * 1.5 - padding * 2, gameHeight - buttonSize * 0.5 - padding);
-            this.virtualButtons.fire.button.setPosition(gameWidth - buttonSize * 0.5 - padding, gameHeight - buttonSize * 0.5 - padding);
-            this.virtualButtons.music.button.setPosition(gameWidth - buttonSize * 0.5 - padding, buttonSize * 0.5 + padding);
-            this.virtualButtons.sound.button.setPosition(gameWidth - buttonSize * 1.5 - padding * 2, buttonSize * 0.5 + padding);
-    
-            Object.values(this.virtualButtons).forEach(button => button.button.setScale(buttonSize / 100));
-        }
+    if (this.virtualButtons && isMobileDevice()) {
+        const buttonSize = gameWidth * 0.1;
+        const padding = buttonSize * 0.2;
+
+        this.virtualButtons.left.button.setPosition(buttonSize * 0.5 + padding, gameHeight - buttonSize * 0.5 - padding);
+        this.virtualButtons.right.button.setPosition(buttonSize * 1.5 + padding * 2, gameHeight - buttonSize * 0.5 - padding);
+        this.virtualButtons.jump.button.setPosition(gameWidth - buttonSize * 1.5 - padding * 2, gameHeight - buttonSize * 0.5 - padding);
+        this.virtualButtons.fire.button.setPosition(gameWidth - buttonSize * 0.5 - padding, gameHeight - buttonSize * 0.5 - padding);
+        this.virtualButtons.music.button.setPosition(gameWidth - buttonSize * 0.5 - padding, buttonSize * 0.5 + padding);
+        this.virtualButtons.sound.button.setPosition(gameWidth - buttonSize * 1.5 - padding * 2, buttonSize * 0.5 + padding);
+
+        Object.values(this.virtualButtons).forEach(button => button.button.setScale(buttonSize / 100));
     }
-
 }
-
 function decreaseTreasureHealth() {
     let enemiesNearTreasure = 0;
 
