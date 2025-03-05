@@ -53,7 +53,7 @@ let isMusicEnabled = true;  // Фоновая музыка включена по
 let isSoundEnabled = true;  // Звуковые эффекты включены по умолчанию
 
 function isMobileDevice() {
-    return /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent) || window.innerWidth <= 768;
+    return 'ontouchstart' in window || navigator.maxTouchPoints > 0;
 }
 
 class Dragon {
@@ -160,7 +160,8 @@ class VirtualButton {
         this.callback = callback;
         this.isPressed = false;
         this.isToggle = isToggle;
-        this.activePointerId = null; // Храним ID активного указателя
+        this.activePointers = new Set(); // Храним множество активных указателей
+
 
         this.button = scene.add.image(x, y, key)
             .setScale(scale)
@@ -308,6 +309,16 @@ const startText = this.add.text(gameWidth / 2, gameHeight / 2 + 50,
         }).setOrigin(0.5).setInteractive();
     startScreen.add(startText);
 
+    const fullscreenText = this.add.text(gameWidth / 2, gameHeight / 2 + 180, 'Fullscreen (Press F)', {
+        fontFamily: 'MedievalSharp',
+        fontSize: '30px',
+        color: '#ffffff',
+        stroke: '#8b4513',
+        strokeThickness: 2
+    }).setOrigin(0.5).setInteractive();
+    startScreen.add(fullscreenText);
+
+
 
     const musicToggle = this.add.text(gameWidth / 2, gameHeight / 2 + 100, `Music: ${isMusicEnabled ? 'ON' : 'OFF'} (Press M)`, {
         fontFamily: 'MedievalSharp',
@@ -327,6 +338,21 @@ const startText = this.add.text(gameWidth / 2, gameHeight / 2 + 50,
     }).setOrigin(0.5).setInteractive();
     startScreen.add(soundToggle);
 
+    startText.on('pointerup', () => {
+        if (!gameStarted) startGame.call(this);
+    });
+
+    fullscreenText.on('pointerup', () => {
+        if (!this.scale.isFullscreen) {
+            this.scale.startFullscreen();
+        } else {
+            this.scale.stopFullscreen();
+        }
+        fullscreenText.setText(`Fullscreen: ${this.scale.isFullscreen ? 'ON' : 'OFF'} (Press F)`);
+    });
+
+
+    
     if (isMobileDevice()) {
 
         startText.on('pointerup', () => {
@@ -455,7 +481,7 @@ function startGame() {
     this.virtualButtons = {};
 
     if (isMobileDevice()) {
-        const buttonSize = gameWidth * 0.17;
+        const buttonSize = gameWidth * 0.1;
         const padding = buttonSize * 0.2;
 
         this.virtualButtons.left = new VirtualButton(
@@ -522,6 +548,14 @@ function startGame() {
     scene.input.keyboard.on('keydown-SPACE', () => dragon.shoot(), scene);
     scene.input.keyboard.on('keydown-R', () => restartGame.call(scene));
 
+    scene.input.keyboard.on('keydown-F', () => {
+        if (!scene.scale.isFullscreen) {
+            scene.scale.startFullscreen();
+        } else {
+            scene.scale.stopFullscreen();
+        }
+    });
+
     scene.physics.add.collider(enemies, platforms);
     scene.physics.add.overlap(enemies, treasure, stealCoin, null, scene);
     scene.physics.add.overlap(fireballs, enemies, hitEnemy, null, scene);
@@ -560,6 +594,8 @@ function update() {
     } else {
         dragon.stopShooting();
     }
+
+
     enemies.getChildren().forEach(enemy => {
         if (!enemy.active) return;
         let hasCoin = enemy.getData('hasCoin') || false;
